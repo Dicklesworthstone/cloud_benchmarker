@@ -1,4 +1,4 @@
-# ☁️🏆🚀 Cloud Benchmarker 🚀🏆☁️
+# ☁️🏆 Cloud Benchmarker 🏆☁️
 
 ## Overview
 
