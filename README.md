@@ -18,7 +18,7 @@ Cloud Benchmarker is a specialized tool that benchmarks the performance of cloud
 
 ```bash
 sudo apt-get update
-sudo apt-get install ansible python3-pip -y
+sudo apt-get install ansible python3-pip uvicorn -y
 git clone https://github.com/Dicklesworthstone/cloud_benchmarker
 cd cloud_benchmarker
 python3 -m venv venv
