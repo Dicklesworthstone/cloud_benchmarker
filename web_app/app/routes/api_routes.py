@@ -14,7 +14,18 @@ logger = setup_logger()
 
 router = APIRouter()
 
-@router.get("/data/raw/", response_model=List[HistoricalRawBenchmarkSubscoresResponse])
+@router.get("/data/raw/",
+            summary="Get Raw Data",
+            description="""Fetch raw benchmark subscores based on the time period specified.
+
+### Parameters:
+- `time_period`: The time range for which data should be fetched (optional). Supported values are `last_7_days`, `last_30_days`, `last_year`.
+
+### Examples:
+- To get data for the last 7 days: `/data/raw/?time_period=last_7_days`
+- To get all data: `/data/raw/""",
+            response_model=List[HistoricalRawBenchmarkSubscoresResponse],
+            response_description="A list of raw benchmark subscores.")
 def read_raw_data(db: Session = Depends(get_db), time_period: str = Query(None, alias="time_period")):
     logger.info(f"Fetching raw data for the time_period: {time_period}")    
     if time_period:
@@ -31,7 +42,20 @@ def read_raw_data(db: Session = Depends(get_db), time_period: str = Query(None, 
     else:
         return db.query(RawBenchmarkSubscores).all()
 
-@router.get("/data/overall/", response_model=List[HistoricalOverallNormalizedScoresResponse])
+
+
+@router.get("/data/overall/",
+            summary="Get Overall Data",
+            description="""Fetch overall normalized scores based on the time period specified.
+
+### Parameters:
+- `time_period`: The time range for which data should be fetched (optional). Supported values are `last_7_days`, `last_30_days`, `last_year`.
+
+### Examples:
+- To get data for the last 7 days: `/data/overall/?time_period=last_7_days`
+- To get all data: `/data/overall/""",
+            response_model=List[HistoricalOverallNormalizedScoresResponse],
+            response_description="A list of overall normalized scores.")
 def read_overall_data(db: Session = Depends(get_db), time_period: str = Query(None, alias="time_period")):
     logger.info(f"Fetching overall data for the time_period: {time_period}")    
     if time_period:
@@ -49,12 +73,28 @@ def read_overall_data(db: Session = Depends(get_db), time_period: str = Query(No
         return db.query(OverallNormalizedScore).all()
 
 
-@router.get("/benchmark_charts/")
+
+@router.get("/benchmark_charts/",
+            summary="Generate Benchmark Charts",
+            description=f"Generate benchmark charts based on the available data. To access this endpoint, just navigate to the URL: <your_ip_address>:9999/benchmark_charts/",
+            response_description="Generated benchmark charts.")
 async def benchmark_chart(db: Session = Depends(get_db)):
     return await generate_benchmark_charts(db)
 
 
-@router.get("/benchmark_historical_csv/")
+
+@router.get("/benchmark_historical_csv/",
+            summary="Generate Benchmark Historical CSV",
+            description="""Generate a CSV file containing historical data for both raw benchmarks and overall normalized scores.
+
+### Description:
+- This endpoint fetches historical raw benchmark subscores and overall normalized scores from the database.
+- It then merges the data based on the closest timestamps.
+- The final CSV file is generated in memory and returned as a download.
+
+### Examples:
+- To generate and download the CSV: `/benchmark_historical_csv/""",
+            response_description="A CSV file containing historical raw benchmarks and overall normalized scores.")
 async def get_benchmark_historical_csv(db: Session = Depends(get_db)):
     logger.info("Generating benchmark historical CSV.")    
     # Retrieve historical data from the database for raw benchmarks and overall scores
