@@ -166,9 +166,6 @@ To modify the `PLAYBOOK_RUN_INTERVAL_IN_MINUTES` in your setup, you'll need to d
 1. Open the `.env` file in a text editor.
 2. Locate the line `PLAYBOOK_RUN_INTERVAL_IN_MINUTES=360`.
 3. Change `360` to the desired number of minutes you'd like to set as the new interval.
-4. Save the `.env` file and close it.
-
-After modifying the `.env` file, you'll likely need to restart the application for the new setting to take effect, as the `.env` variables are usually read into the application at startup.
 
 ### Understanding the Trade-offs
 
