@@ -26,8 +26,13 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 source venv/bin/activate
-uvicorn web_app.app.main:app --host 0.0.0.0 --port 9999
 ```
+
+Now simply edit the Ansible inventory file (`my_ansible_inventory_file.ini`) to include your machine IP addresses and SSH key information (edit or replace `my-secret-ssh-key.pem`) and you can start the system with:
+
+`uvicorn web_app.app.main:app --host 0.0.0.0 --port 9999`
+
+Note that the first time you run it, it will immediately create the required directories and start the benchmarking playbook. Thereafter, it will do another benchmark every 6 hours (you can set the schedule to any interval by editing the value in the `.env` file). 
 
 ![Screenshot](https://github.com/Dicklesworthstone/cloud_benchmarker/raw/main/cloud_benchmarker_screenshot.png)
 
