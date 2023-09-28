@@ -1,0 +1,150 @@
+
+---
+- name: Benchmark VPS machines
+  hosts: all
+  tasks:
+    - name: Install required packages
+      apt:
+        name: ['sysbench', 'gawk', 'grep']
+        state: present
+      become: true
+
+    - name: Initialize empty dictionary for results
+      set_fact:
+        benchmark_results: {}
+
+    - name: Run CPU sysbench test and collect key metrics
+      shell: |
+        set -e
+        output=$(sysbench cpu --threads=4 run)
+        cpu_speed=$(echo "$output" | grep "events per second:" | awk '{print $4}')
+        echo "{\"cpu_speed_test__events_per_second\": $cpu_speed}"
+      register: cpu_result
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Update benchmark results only if the CPU test succeeded
+      set_fact:
+        benchmark_results: "{{ benchmark_results | combine(cpu_result.stdout | from_json) }}"
+      when: cpu_result is not failed
+
+    # Memory Test
+    - name: Run Memory sysbench test and collect key metrics
+      shell: |
+        set -e
+        output=$(sysbench memory --memory-block-size=1K --memory-total-size=100G run)
+        memory_speed=$(echo "$output" | grep "MiB transferred (" | awk '{print $1}')
+        echo "{\"memory_speed_test__MiB_transferred\": $memory_speed}"
+      register: memory_result
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Update benchmark results only if the Memory test succeeded
+      set_fact:
+        benchmark_results: "{{ benchmark_results | combine(memory_result.stdout | from_json) }}"
+      when: memory_result is not failed
+
+    # FileIO Test
+    - name: Run FileIO sysbench test and collect key metrics
+      shell: |
+        set -e
+        sysbench fileio prepare
+        output=$(sysbench fileio --file-test-mode=rndrw run)
+        sysbench fileio cleanup
+        fileio_reads=$(echo "$output" | grep "reads/s:" | awk '{print $2}')
+        echo "{\"fileio_test__reads_per_second\": $fileio_reads}"
+      register: fileio_result
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Extract JSON from FileIO stdout
+      set_fact:
+        fileio_json: "{{ fileio_result.stdout | regex_search('{.*}') }}"
+      when: fileio_result is not failed
+
+    - name: Assert that fileio_json is defined and not empty
+      assert:
+        that:
+          - fileio_json is defined
+          - fileio_json != ''
+        fail_msg: "fileio_json is not defined or empty."
+      when: fileio_result is not failed
+
+    - name: Update benchmark results only if the FileIO test succeeded
+      set_fact:
+        benchmark_results: "{{ benchmark_results | combine(fileio_json) }}"
+      when: fileio_result is not failed and fileio_json is defined
+
+    # Mutex Test
+    - name: Run Mutex sysbench test and collect key metrics
+      shell: |
+        set -e
+        output=$(sysbench mutex --mutex-locks=10000 --mutex-num=128 run)
+        mutex_avg=$(echo "$output" | grep "avg:" | awk '{print $2}' | head -1)
+        echo "{\"mutex_test__avg_latency\": $mutex_avg}"
+      register: mutex_result
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Update benchmark results only if the Mutex test succeeded
+      set_fact:
+        benchmark_results: "{{ benchmark_results | combine(mutex_result.stdout | from_json) }}"
+      when: mutex_result is not failed
+
+    # Threads Test
+    - name: Run Threads sysbench test and collect key metrics
+      shell: |
+        set -e
+        output=$(sysbench threads --threads=4 run)
+        threads_avg=$(echo "$output" | grep "avg:" | awk '{print $2}' | head -1)
+        echo "{\"threads_test__avg_latency\": $threads_avg}"
+      register: threads_result
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Update benchmark results only if the Threads test succeeded
+      set_fact:
+        benchmark_results: "{{ benchmark_results | combine(threads_result.stdout | from_json) }}"
+      when: threads_result is not failed
+
+    - name: Save benchmark results to JSON file
+      copy:
+        content: "{{ benchmark_results | to_nice_json }}"
+        dest: "/home/{{ ansible_user }}/cloud_benchmarker_results.json"
+      become: true
+
+    - name: Fetch benchmark results to control node
+      fetch:
+        src: "/home/{{ ansible_user }}/cloud_benchmarker_results.json"
+        dest: "/tmp/{{ inventory_hostname }}_cloud_benchmarker_results/"
+        flat: yes
+
+- name: Combine benchmark results
+  hosts: localhost
+  tasks:
+    - name: Read most recent JSON files and combine them
+      shell: "ls -t /tmp/{{ item }}_cloud_benchmarker_results/*.json | head -n 1 | xargs cat"
+      register: json_outputs
+      with_items: "{{ groups['all'] }}"
+      changed_when: false
+
+    - name: Assemble combined JSON file
+      copy:
+        content: "{% for host in groups['all'] %}{{ host }}: {{ json_outputs.results[loop.index0].stdout }}{% if not loop.last %},{% endif %}{% endfor %}"
+        dest: "/home/{{ ansible_user }}/combined_cloud_benchmarker_results.json"
+
+- name: Copy and execute Python script
+  hosts: localhost
+  tasks:
+    - name: Copy Python script
+      copy:
+        src: ./script_to_generate_overall_benchmark_scores_from_subscores.py
+        dest: /tmp/script_to_generate_overall_benchmark_scores_from_subscores.py
+
+    - name: Run Python script
+      command: python3 /tmp/script_to_generate_overall_benchmark_scores_from_subscores.py
+
+    - name: Remove temporary Python script file
+      file:
+        path: /tmp/script_to_generate_overall_benchmark_scores_from_subscores.py
+        state: absent

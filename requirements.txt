@@ -1,0 +1,9 @@
+sqlalchemy
+fastapi
+schedule
+ansible
+uvicorn
+plotly-express
+pandas
+pydantic
+python-decouple

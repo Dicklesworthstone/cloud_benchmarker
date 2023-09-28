@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: FastAPI",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            "console": "integratedTerminal",
+            "cwd": "/home/ubuntu/cloud_benchmarker",
+            "args": [
+                "web_app.app.main:app",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "9999",
+                "--reload"
+            ]
+        }
+    ]
+}
