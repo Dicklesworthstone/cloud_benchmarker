@@ -4,7 +4,6 @@
 
 Cloud Benchmarker is a specialized tool that benchmarks the performance of cloud instances, particularly beneficial for low-cost VPS hosting services that often oversell their resources. With such services, you might find the performance to be volatile and sometimes below what's advertised. By leveraging the well-regarded `sysbench` for benchmarking tests, Cloud Benchmarker provides a reliable way to monitor various performance metrics such as CPU speed, memory speed, and disk I/O.
 
-//insert logo image:
 ![Logo](https://github.com/Dicklesworthstone/cloud_benchmarker/raw/main/cloud_benchmarker_logo.webp)
 
 ## Features
