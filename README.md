@@ -34,7 +34,13 @@ Now simply edit the Ansible inventory file (`my_ansible_inventory_file.ini`) to 
 
 Note that the first time you run it, it will immediately create the required directories and start the benchmarking playbook. Thereafter, it will do another benchmark every 6 hours (you can set the schedule to any interval by editing the value in the `.env` file). 
 
-![Screenshot](https://github.com/Dicklesworthstone/cloud_benchmarker/raw/main/cloud_benchmarker_screenshot.png)
+## Swagger:
+![Swagger Screenshot](https://github.com/Dicklesworthstone/cloud_benchmarker/raw/main/cloud_benchmarker_screenshot.png)
+
+
+## Charts:
+![Chart Screenshot](https://github.com/Dicklesworthstone/cloud_benchmarker/raw/main/cloud_benchmarker_screenshot_charts.webp)
+
 
 ### Project Requirements
 
