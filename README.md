@@ -154,9 +154,23 @@ The provided Python script is designed to generate interactive charts visualizin
 1. **Query and Prepare Data**: Similar to the raw benchmark data, the overall scores are queried, sorted, and converted into a Pandas DataFrame.
 2. **Create Figure**: A Plotly Express line chart is created, which plots the overall normalized score over time, categorized by hostname.
 
-## Contributing
+## Configuration
+To modify the `PLAYBOOK_RUN_INTERVAL_IN_MINUTES` in your setup, you'll need to do the following:
 
-Read the [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute.
+1. Open the `.env` file in a text editor.
+2. Locate the line `PLAYBOOK_RUN_INTERVAL_IN_MINUTES=360`.
+3. Change `360` to the desired number of minutes you'd like to set as the new interval.
+4. Save the `.env` file and close it.
+
+After modifying the `.env` file, you'll likely need to restart the application for the new setting to take effect, as the `.env` variables are usually read into the application at startup.
+
+### Understanding the Trade-offs
+
+The `PLAYBOOK_RUN_INTERVAL_IN_MINUTES` is currently set to 360 minutes, or 6 hours. This is a relatively long interval, which is generally good for minimizing the performance impact on your cloud instances. However, if you're looking for more frequent updates, you may consider reducing this number. Here are some trade-offs:
+
+1. **Performance Impact**: Reducing this interval will result in more frequent benchmarking, which can affect the performance of your cloud instances. Make sure to understand the resource requirements of your other applications running on these instances before changing this value.
+
+2. **Data Freshness**: A shorter interval will yield more up-to-date data but at the cost of higher resource utilization. If you need real-time monitoring, you might consider lowering this value cautiously.
 
 ## License
 
