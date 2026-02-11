@@ -76,7 +76,7 @@ def read_overall_data(db: Session = Depends(get_db), time_period: str = Query(No
 
 @router.get("/benchmark_charts/",
             summary="Generate Benchmark Charts",
-            description=f"Generate benchmark charts based on the available data. To access this endpoint, just navigate to the URL: <your_ip_address>:9999/benchmark_charts/",
+            description="Generate benchmark charts based on the available data. To access this endpoint, just navigate to the URL: <your_ip_address>:9999/benchmark_charts/",
             response_description="Generated benchmark charts.")
 async def benchmark_chart(db: Session = Depends(get_db)):
     return await generate_benchmark_charts(db)
