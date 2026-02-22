@@ -183,4 +183,4 @@ The `PLAYBOOK_RUN_INTERVAL_IN_MINUTES` is currently set to 360 minutes, or 6 hou
 
 ## License
 
-This project is under the MIT License.
+This project is under the MIT License (with OpenAI/Anthropic Rider).
