@@ -1,0 +1,173 @@
+# Changelog
+
+All notable changes to Cloud Benchmarker are documented in this file.
+
+This project has no formal releases or tags. Changes are organized by date and grouped by capability area. All development occurs on the `main` branch.
+
+Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
+
+---
+
+## 2026-02-21 / 2026-02-22 -- Licensing, Branding, and Code Quality
+
+### Licensing
+
+- Created `LICENSE` file containing the MIT License with OpenAI/Anthropic Rider, which restricts use by OpenAI, Anthropic, and their affiliates without express written permission from Jeffrey Emanuel.
+  [`a8ee365`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/a8ee36557f9a6a9388acd79027cb1ead3f27a908)
+- Updated the README license section to reference "MIT License (with OpenAI/Anthropic Rider)" instead of plain "MIT License".
+  [`0c1e58c`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/0c1e58c9c93b046c408362ea4c59a14dde583607)
+
+### Social Preview
+
+- Added GitHub Open Graph social preview image (`gh_og_share_image.png`, 1280x640) so the repository displays a branded card when shared on social media and chat platforms.
+  [`1d0f4a2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/1d0f4a231d5d2df8286bfe880f082f198e0b4fd0)
+
+---
+
+## 2026-02-11 -- Linting Fix
+
+### Code Quality
+
+- Removed a spurious `f"..."` prefix from the `/benchmark_charts/` endpoint description string in `api_routes.py`. The string contained no interpolated variables, so the f-prefix triggered pylint W1309 / ruff F541 warnings for no benefit.
+  [`6153af7`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/6153af741f2b6013c705d9df06b42f269c39f6f2)
+
+---
+
+## 2023-09-28 -- Initial Development
+
+Every commit in this section landed on the same day the project was created. They are grouped below by capability rather than chronological order.
+
+### Benchmarking Engine
+
+The core of Cloud Benchmarker: an Ansible playbook that orchestrates five sysbench tests across remote hosts and a Python scoring script that normalizes and ranks results.
+
+- **Ansible playbook** (`benchmark-playbook.yml`): installs `sysbench`, `gawk`, and `grep` on targets, then runs five tests per host -- CPU (events/sec, 4 threads), memory (MiB transferred, 1K blocks over 100G), file I/O (random read/write reads/sec), mutex (avg latency, 10K locks, 128 mutexes), and threads (avg latency, 4 threads). Results are saved to per-host JSON files, fetched to the control node, and assembled into a single combined JSON.
+- **Scoring script** (`script_to_generate_overall_benchmark_scores_from_subscores.py`): normalizes each metric to 0--100, applies configurable custom weights (e.g., CPU and memory at 2x, mutex and threads at 0.5x), sums them into an overall score, and writes sorted results to a JSON file.
+
+Introduced in:
+[`1fc4111`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/1fc411169a7bbbed17a48a93315c3e549dbdeacb)
+
+### Web Application and API
+
+A FastAPI application serving as both the dashboard and the data-access layer.
+
+- **`GET /data/raw/`** -- returns raw benchmark subscores, optionally filtered by `time_period` (`last_7_days`, `last_30_days`, `last_year`).
+- **`GET /data/overall/`** -- returns overall normalized scores with the same time-period filters.
+- **`GET /benchmark_charts/`** -- generates interactive Plotly charts with per-metric and per-IP-address dropdown toggles.
+- **`GET /benchmark_historical_csv/`** -- merges raw and overall data by closest timestamp and streams a CSV download.
+- **Swagger UI** served at `/` as the default docs page (`docs_url="/"`).
+- Application version declared as `1.0.0` in the FastAPI constructor.
+
+Introduced in:
+[`1fc4111`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/1fc411169a7bbbed17a48a93315c3e549dbdeacb)
+
+All four endpoints were later enriched with detailed Swagger metadata -- `summary`, `description` (including parameter documentation and usage examples), and `response_description`:
+[`6c26ca2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/6c26ca28f0986fd4469e1fd6857d5d4eaa69a02f)
+
+### Data Layer
+
+- SQLAlchemy ORM models for `RawBenchmarkSubscores` and `OverallNormalizedScore`, backed by SQLite (`cloud_benchmarker.sqlite`).
+- Database initialization on application startup via `init_db.py`.
+
+Introduced in:
+[`1fc4111`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/1fc411169a7bbbed17a48a93315c3e549dbdeacb)
+
+### Scheduler and Automation
+
+A background daemon thread that runs the Ansible playbook on a configurable interval and ingests results into the database automatically.
+
+- Playbook execution interval controlled by `PLAYBOOK_RUN_INTERVAL_IN_MINUTES` (default: 360 min / 6 hours).
+- Staleness check: skips playbook execution if output files are less than 3 hours old.
+- After each playbook run, results are parsed and ingested into SQLite.
+
+Introduced in:
+[`1fc4111`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/1fc411169a7bbbed17a48a93315c3e549dbdeacb)
+
+**Hardening (same day):** Several critical fixes were applied to make the scheduler robust for first-run and edge-case scenarios:
+[`e6b7428`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/e6b7428f8fdac7e33837e32f13892b84c4c8bf05)
+
+- **Auto-create output directories**: the scheduler now creates `~/benchmark_result_output_files/` and initializes `~/combined_cloud_benchmarker_results.json` with `{}` on first run, instead of crashing when they are absent.
+- **Initial-setup flag**: forces the Ansible playbook to execute on first launch regardless of the file-staleness check, then resets the flag so subsequent runs respect the interval.
+- **Empty-glob guard**: the `glob.glob()` result is checked for emptiness before calling `max()`, preventing a `ValueError` when no JSON output files exist yet.
+- **Computed output paths**: moved `NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH` and `COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH` from `.env` variables to paths computed dynamically under the current OS user's home directory (via `os.getlogin()`), simplifying deployment and eliminating a hard dependency on the `/home/ubuntu` username.
+
+### Ansible Inventory and SSH Configuration
+
+- Created example Ansible inventory file (`my_ansible_inventory_file.ini`) with placeholder host IPs and SSH key reference.
+  [`fb05b72`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/fb05b72fcb33dfce110afa440ddb932f0cca7268)
+- Changed `ansible_private_key_file` from an absolute path (`/home/ubuntu/my-secret-ssh-key.pem`) to a relative path (`my-secret-ssh-key.pem`) for portability across environments.
+  [`0c0233f`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/0c0233f442603e6d748f3b68e2ea8f2ac52e2cb5)
+- Added placeholder SSH key file (`my-secret-ssh-key.pem`) so the project structure is complete out of the box.
+  [`a97ac32`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/a97ac32f0d928b6965e2ea5f63d6c69de25b16db)
+
+### Application Branding
+
+- Simplified the FastAPI title/description by removing extra rocket emoji from both the README heading and the `main.py` description string.
+  [`86ea9ad`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/86ea9ad55ca430fed1d5ec6aacc8a1d4e7d6a43d),
+  [`d8aba91`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/d8aba91fbbaa05bcde4ccb7ab71cfacc1323bd6b)
+
+### Screenshots and Visual Assets
+
+- Included project logo (`cloud_benchmarker_logo.webp`) and initial Swagger screenshot (`cloud_benchmarker_screenshot.png`) with the first commit.
+  [`1fc4111`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/1fc411169a7bbbed17a48a93315c3e549dbdeacb)
+- Updated the Swagger screenshot to a cleaner capture.
+  [`0b5a242`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/0b5a2421ed9bcc7aa4363c65d329dec8d0ca132f)
+- Added a charts screenshot (`cloud_benchmarker_screenshot_charts.webp`) showing the Plotly visualization output.
+  [`17d6015`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/17d6015eff04da59755494485868e176a5b10050)
+
+### Documentation (README)
+
+The README was iteratively expanded throughout launch day:
+
+- Added installation instructions (venv setup, pip requirements) and initial feature list.
+  [`6252fd2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/6252fd2c28069df03c1aa84a984cfb996e9857f6),
+  [`422f333`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/422f3333c649e83401e96b93e9b919f8ed6715da)
+- Added `source venv/bin/activate` reminder after `pip install` in the install block.
+  [`37dd4a2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/37dd4a2c14433a80a58e1e72c43ba91822f73576)
+- Updated license line from "See LICENSE.md for details" to "This project is under the MIT License" (no LICENSE file existed yet at that time).
+  [`19dac0c`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/19dac0c7d75cb7bf73d84a11196900d571bb3106)
+- Separated uvicorn launch command from the install block into its own section; added guidance on editing the Ansible inventory file and documented first-run auto-setup behavior.
+  [`012c89d`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/012c89df5a50c619f12d4e6d6b895b86234af424)
+- Trimmed the configuration section, removing the "restart required" note since `.env` variables are read at startup by design.
+  [`5235b9a`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/5235b9aef7046d16db40b9dcf6365a897e0829b5)
+- Split the single screenshot embed into separate "Swagger" and "Charts" sections with distinct headers.
+  [`4f9a8d6`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4f9a8d61d551fed3f522db09ddc4394b832a5e2a)
+
+### Configuration and Tooling
+
+Introduced in the first commit:
+[`1fc4111`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/1fc411169a7bbbed17a48a93315c3e549dbdeacb)
+
+- `.env` with all runtime settings: database connection string, playbook interval, chart data-point limit, and inventory file path.
+- `.gitignore` (Python-standard, 166 lines).
+- `.vscode/launch.json` for local debugging.
+- `pyproject.toml` (minimal project metadata).
+- `requirements.txt`: sqlalchemy, fastapi, schedule, ansible, uvicorn, plotly-express, pandas, pydantic, python-decouple.
+
+---
+
+## Commit Index
+
+| Date | Hash | Summary |
+|------|------|---------|
+| 2026-02-22 | [`0c1e58c`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/0c1e58c9c93b046c408362ea4c59a14dde583607) | docs: update README license references to MIT + OpenAI/Anthropic Rider |
+| 2026-02-22 | [`a8ee365`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/a8ee36557f9a6a9388acd79027cb1ead3f27a908) | chore: update license to MIT with OpenAI/Anthropic Rider |
+| 2026-02-21 | [`1d0f4a2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/1d0f4a231d5d2df8286bfe880f082f198e0b4fd0) | chore: add GitHub social preview image (1280x640) |
+| 2026-02-11 | [`6153af7`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/6153af741f2b6013c705d9df06b42f269c39f6f2) | Remove unnecessary f-string prefix from static description string |
+| 2023-09-28 | [`4f9a8d6`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4f9a8d61d551fed3f522db09ddc4394b832a5e2a) | Update README.md (Swagger/Charts section split) |
+| 2023-09-28 | [`17d6015`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/17d6015eff04da59755494485868e176a5b10050) | Add charts screenshot |
+| 2023-09-28 | [`5235b9a`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/5235b9aef7046d16db40b9dcf6365a897e0829b5) | Update README.md (trim config section) |
+| 2023-09-28 | [`0b5a242`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/0b5a2421ed9bcc7aa4363c65d329dec8d0ca132f) | Update Swagger screenshot |
+| 2023-09-28 | [`012c89d`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/012c89df5a50c619f12d4e6d6b895b86234af424) | Update README.md (inventory + first-run docs) |
+| 2023-09-28 | [`d8aba91`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/d8aba91fbbaa05bcde4ccb7ab71cfacc1323bd6b) | Update main.py (simplify description emoji) |
+| 2023-09-28 | [`86ea9ad`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/86ea9ad55ca430fed1d5ec6aacc8a1d4e7d6a43d) | Update README.md (simplify heading emoji) |
+| 2023-09-28 | [`19dac0c`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/19dac0c7d75cb7bf73d84a11196900d571bb3106) | Update README.md (license line) |
+| 2023-09-28 | [`a97ac32`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/a97ac32f0d928b6965e2ea5f63d6c69de25b16db) | Add placeholder SSH key file |
+| 2023-09-28 | [`0c0233f`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/0c0233f442603e6d748f3b68e2ea8f2ac52e2cb5) | Update my_ansible_inventory_file.ini (relative key path) |
+| 2023-09-28 | [`fb05b72`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/fb05b72fcb33dfce110afa440ddb932f0cca7268) | Create my_ansible_inventory_file.ini |
+| 2023-09-28 | [`37dd4a2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/37dd4a2c14433a80a58e1e72c43ba91822f73576) | Update README.md (venv activate reminder) |
+| 2023-09-28 | [`6c26ca2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/6c26ca28f0986fd4469e1fd6857d5d4eaa69a02f) | Update swagger docs (endpoint metadata) |
+| 2023-09-28 | [`e6b7428`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/e6b7428f8fdac7e33837e32f13892b84c4c8bf05) | Bug fixes (scheduler hardening) |
+| 2023-09-28 | [`422f333`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/422f3333c649e83401e96b93e9b919f8ed6715da) | readme (install instructions + config docs) |
+| 2023-09-28 | [`6252fd2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/6252fd2c28069df03c1aa84a984cfb996e9857f6) | readme (minor formatting) |
+| 2023-09-28 | [`1fc4111`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/1fc411169a7bbbed17a48a93315c3e549dbdeacb) | first commit (full application) |
