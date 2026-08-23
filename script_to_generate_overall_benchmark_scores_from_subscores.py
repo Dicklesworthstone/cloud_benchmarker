@@ -1,66 +1,118 @@
-import json
-import datetime
-import re
-import os
+"""Calculate overall performance scores from combined benchmark subscores.
 
-YOUR_USER_NAME = 'ubuntu'
+Each raw metric is min-max normalized across hosts to a 0..100 scale, where
+100 is always the BEST observed value:
+
+- Higher-is-better metrics (events/sec, reads/sec, MiB transferred):
+  best host (max value) -> 100, worst host (min value) -> 0.
+- Lower-is-better metrics (mutex/threads avg latency):
+  best host (min value) -> 100, worst host (max value) -> 0.
+
+When a metric has an identical value on every host (including the
+single-host case) there is no comparative signal, so every host receives a
+neutral 50 instead of a misleading perfect score.
+"""
+
+import datetime
+import json
+import os
+import re
+
+COMBINED_INPUT_FILENAME = "combined_cloud_benchmarker_results.json"
+OUTPUT_DIR_NAME = "benchmark_result_output_files"
+NEUTRAL_SCORE = 50.0
+
+# Metrics where a LOWER raw value means BETTER performance.
+LOWER_IS_BETTER_METRICS = frozenset({
+    "mutex_test__avg_latency",
+    "threads_test__avg_latency",
+})
+
+
+def parse_combined_results(content):
+    """Parse combined-results content, accepting both supported formats.
+
+    The current playbook emits strict JSON (quoted keys, enclosing braces).
+    Older playbook versions emitted quasi-JSON: unquoted host keys and no
+    enclosing braces, e.g. ``hostA: {"metric": 1},hostB: {...}``.
+    """
+    content = content.strip()
+    if not content:
+        return {}
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        massaged = re.sub(r'(\w+): {', r'"\1": {', content)
+        return json.loads('{' + massaged + '}')
+
 
 def calculate_overall_performance(data, weighting="equal_weighting", custom_weights=None):
+    """Normalize each metric to 0..100 (100 = best) and combine into scores.
+
+    ``weighting`` is either ``"equal_weighting"`` or ``"custom"``. Custom
+    weights are normalized to sum to 1 and must cover every metric present
+    in ``data``.
+    """
     overall_scores = {}
-    max_values = {}
-    min_values = {}
-    for metric in data[list(data.keys())[0]].keys():
-        max_values[metric] = max([host_data[metric] for host, host_data in data.items()])
-        min_values[metric] = min([host_data[metric] for host, host_data in data.items()])
-    for host, metrics in data.items():
-        normalized_scores = {}
-        for metric, value in metrics.items():
-            if max_values[metric] != min_values[metric]:
-                normalized_scores[metric] = ((value - min_values[metric]) / (max_values[metric] - min_values[metric])) * 100
+    host_names = list(data.keys())
+    metrics = list(data[host_names[0]].keys())
+
+    if weighting == "custom":
+        if not custom_weights:
+            raise ValueError("Custom weights must be provided for custom weighting.")
+        missing = [m for m in metrics if m not in custom_weights]
+        if missing:
+            raise ValueError(f"Custom weights missing entries for metrics: {missing}")
+        total_weight = sum(custom_weights.values())
+        if total_weight == 0:
+            raise ValueError("Sum of custom weights must not be zero.")
+        custom_weights = {k: v / total_weight for k, v in custom_weights.items()}
+    elif weighting != "equal_weighting":
+        raise ValueError(f"Unknown weighting mode: {weighting}")
+
+    for metric in metrics:
+        values = [data[host][metric] for host in host_names]
+        max_value, min_value = max(values), min(values)
+        for host in host_names:
+            value = data[host][metric]
+            if max_value == min_value:
+                normalized = NEUTRAL_SCORE
+            elif metric in LOWER_IS_BETTER_METRICS:
+                normalized = ((max_value - value) / (max_value - min_value)) * 100
             else:
-                normalized_scores[metric] = 100.0
-        if weighting == "equal_weighting":
-            overall_scores[host] = sum(normalized_scores.values()) / len(normalized_scores)
-        elif weighting == "custom":
-            if not custom_weights:
-                raise ValueError("Custom weights must be provided for custom weighting.")
-            # Normalize custom weights so they sum up to 1
-            total_weight = sum(custom_weights.values())
-            if total_weight == 0:
-                raise ValueError("Sum of custom weights must not be zero.")
-            custom_weights = {k: v / total_weight for k, v in custom_weights.items()}
-            overall_scores[host] = sum(normalized_scores[metric] * custom_weights[metric] for metric in metrics.keys())
-    sorted_scores = {k: v for k, v in sorted(overall_scores.items(), key=lambda item: item[1], reverse=True)}
-    return sorted_scores
+                normalized = ((value - min_value) / (max_value - min_value)) * 100
+            overall_scores.setdefault(host, []).append(normalized)
+
+    result = {}
+    for host, normalized_list in overall_scores.items():
+        if weighting == "custom":
+            result[host] = sum(n * custom_weights[m] for n, m in zip(normalized_list, metrics))
+        else:
+            result[host] = sum(normalized_list) / len(normalized_list)
+
+    return {k: v for k, v in sorted(result.items(), key=lambda item: item[1], reverse=True)}
+
 
 if __name__ == "__main__":
-    input_file_path = f'/home/{YOUR_USER_NAME}/combined_cloud_benchmarker_results.json'
+    input_file_path = os.path.join(os.path.expanduser("~"), COMBINED_INPUT_FILENAME)
     print(f'Now loading input file {input_file_path}...')
     with open(input_file_path, 'r') as f:
-        content = f.read().strip()
-        if not content:
-            print(f"File {input_file_path} is empty.")
-            exit(1)
-        # Use regex to find all keys that are not enclosed in quotes, and enclose them
-        content = re.sub(r'(\w+): {', r'"\1": {', content)
-        content = '{' + content + '}'  # Wrap content in braces to make it a valid JSON object
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError as e:
-            print(f"Failed to decode JSON. Error: {e}")
-            exit(1)
+        data = parse_combined_results(f.read())
+    if not data:
+        print(f"No benchmark results found in {input_file_path}; nothing to score.")
+        raise SystemExit(1)
+
     custom_weights = {
         "cpu_speed_test__events_per_second": 2.0,
         "fileio_test__reads_per_second": 1.0,
         "memory_speed_test__MiB_transferred": 2.0,
         "mutex_test__avg_latency": 0.5,
-        "threads_test__avg_latency": 0.5
+        "threads_test__avg_latency": 0.5,
     }
     sorted_scores = calculate_overall_performance(data, weighting="custom", custom_weights=custom_weights)
     timestamp = datetime.datetime.now().strftime('%m_%d_%Y__%H_%M_%S')
-    output_directory = f'/home/{YOUR_USER_NAME}/benchmark_result_output_files'
-    if not os.path.exists(output_directory):
-        os.makedirs(output_directory)       
+    output_directory = os.path.join(os.path.expanduser("~"), OUTPUT_DIR_NAME)
+    os.makedirs(output_directory, exist_ok=True)
     output_file = f'{output_directory}/combined_cloud_benchmarker_results__overall_score_sorted__{timestamp}.json'
     with open(output_file, 'w') as f:
         json.dump(sorted_scores, f, indent=4)

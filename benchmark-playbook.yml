@@ -121,17 +121,27 @@
 
 - name: Combine benchmark results
   hosts: localhost
+  gather_facts: false
   tasks:
-    - name: Read most recent JSON files and combine them
-      shell: "ls -t /tmp/{{ item }}_cloud_benchmarker_results/*.json | head -n 1 | xargs cat"
-      register: json_outputs
-      with_items: "{{ groups['all'] }}"
+    - name: Assemble combined JSON from per-host result files, skipping hosts without results
+      shell: |
+        out="{"
+        sep=""
+        for host in {{ groups['all'] | join(' ') }}; do
+          f="/tmp/${host}_cloud_benchmarker_results/cloud_benchmarker_results.json"
+          if [ -s "$f" ]; then
+            out="${out}${sep}\"${host}\": $(cat "$f")"
+            sep=","
+          fi
+        done
+        printf '%s}' "$out"
+      register: combined_out
       changed_when: false
 
-    - name: Assemble combined JSON file
+    - name: Write combined JSON file
       copy:
-        content: "{% for host in groups['all'] %}{{ host }}: {{ json_outputs.results[loop.index0].stdout }}{% if not loop.last %},{% endif %}{% endfor %}"
-        dest: "/home/{{ ansible_user }}/combined_cloud_benchmarker_results.json"
+        content: "{{ combined_out.stdout }}"
+        dest: "{{ lookup('env', 'HOME') }}/combined_cloud_benchmarker_results.json"
 
 - name: Copy and execute Python script
   hosts: localhost
