@@ -1,17 +1,19 @@
-from web_app.app.database.data_models import RawBenchmarkSubscores, OverallNormalizedScore
+import glob
+import json
+import os
+import re
+import subprocess
+import time
+from datetime import datetime, timedelta
+from threading import Thread
+
+import schedule
+from decouple import config as decouple_config
+from sqlalchemy.orm import Session
+
+from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
 from web_app.app.database.init_db import SessionLocal
 from web_app.app.logger_config import setup_logger
-import os
-import json
-import re
-import schedule
-import time
-import glob
-import subprocess
-from threading import Thread
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from decouple import config as decouple_config
 
 logger = setup_logger()
 ANSIBLE_INVENTORY_FILE_PATH = decouple_config("ANSIBLE_INVENTORY_FILE_PATH", cast=str)
@@ -31,15 +33,22 @@ if not os.path.exists(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH):
 
 
 def parse_inventory(file_path):
+    """Map hostnames to control-node target IPs from inventory lines like
+    ``TestnetSupernode01 ansible_host=1.2.3.4``.
+
+    Tolerates any key order, extra inline variables, group headers, blank
+    lines, and comments; skips lines without an ansible_host assignment.
+    """
     logger.info(f"Parsing inventory file at {file_path}.")
     host_to_ip_dict = {}
     with open(file_path, 'r') as f:
         for line in f:
-            if "ansible_host" in line:
-                parts = line.strip().split(" ")
-                hostname = parts[0]
-                ip_address = parts[1].split('=')[1]
-                host_to_ip_dict[hostname] = ip_address
+            stripped = line.strip()
+            if not stripped or stripped.startswith(('[', '#', ';')):
+                continue
+            match = re.search(r'ansible_host=(\S+)', stripped)
+            if match:
+                host_to_ip_dict[stripped.split(' ', 1)[0]] = match.group(1)
     return host_to_ip_dict
 
 
@@ -89,19 +98,17 @@ def ingest_data(db: Session, raw_data, overall_data, datetime_from_file, host_to
 
 def run_playbook():
     logger.info("Now running ansible playbook...")
+    # Merge stderr into stdout: draining two pipes sequentially lets a chatty
+    # stderr fill its pipe buffer while we block on stdout -- a classic hang.
     process = subprocess.Popen(
         ["ansible-playbook", "-v", "-i", ANSIBLE_INVENTORY_FILE_PATH, "benchmark-playbook.yml"],
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True
     )
     for line in iter(process.stdout.readline, ''):
         logger.info(line.strip())
     process.stdout.close()
-    stderr_output = process.stderr.read()
-    process.stderr.close()
-    if stderr_output.strip():
-        logger.warning(f"Ansible playbook stderr: {stderr_output.strip()}")
     process.wait()
     logger.info(f"Ansible playbook run completed with return code {process.returncode}.")
 
