@@ -1,15 +1,22 @@
-from web_app.app.database.data_models import RawBenchmarkSubscores, OverallNormalizedScore, HistoricalRawBenchmarkSubscoresResponse, HistoricalOverallNormalizedScoresResponse
-from web_app.app.database.init_db import get_db
-from web_app.app.logger_config import setup_logger
-from web_app.app.chart import generate_benchmark_charts
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import List, Optional
 from io import StringIO
-from fastapi import APIRouter, Query, Depends
+from typing import List, Optional
+
+import pandas as pd
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-import pandas as pd
+
+from web_app.app.chart import generate_benchmark_charts
+from web_app.app.database.data_models import (
+    HistoricalOverallNormalizedScoresResponse,
+    HistoricalRawBenchmarkSubscoresResponse,
+    OverallNormalizedScore,
+    RawBenchmarkSubscores,
+)
+from web_app.app.database.init_db import get_db
+from web_app.app.logger_config import setup_logger
 
 logger = setup_logger()
 

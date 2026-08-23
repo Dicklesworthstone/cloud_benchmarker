@@ -1,12 +1,14 @@
-from web_app.app.database.data_models import RawBenchmarkSubscores, OverallNormalizedScore
-from web_app.app.logger_config import setup_logger
+import warnings
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from decouple import config
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
-from decouple import config
-import warnings
+
+from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+from web_app.app.logger_config import setup_logger
 
 warnings.filterwarnings('ignore', 'The behavior of DatetimeProperties.to_pydatetime is deprecated')
 
