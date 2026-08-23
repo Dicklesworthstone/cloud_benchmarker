@@ -34,7 +34,18 @@ Now simply edit the Ansible inventory file (`my_ansible_inventory_file.ini`) to 
 
 Note that the first time you run it, it will immediately create the required directories and start the benchmarking playbook. Thereafter, it will do another benchmark every 6 hours (you can set the schedule to any interval by editing the value in the `.env` file). 
 
+### Running the Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/ -v
+```
+
+
 ## Swagger:
+
+Interactive API documentation is served at [`/docs`](http://localhost:9999/docs); the root URL now hosts the charts dashboard.
+
 ![Swagger Screenshot](https://github.com/Dicklesworthstone/cloud_benchmarker/raw/main/cloud_benchmarker_screenshot.png)
 
 
@@ -61,7 +72,7 @@ Note that the first time you run it, it will immediately create the required dir
 - **Python-Decouple**: Library for separating configuration from code.
 
 #### Data Visualization
-- **Plotly-Express**: High-level plotting library for interactive visualizations.
+- **Plotly**: High-level plotting library for interactive visualizations (the `plotly.express` module ships inside the main `plotly` package).
 
 
 ## Usage
@@ -73,13 +84,13 @@ Note that the first time you run it, it will immediately create the required dir
 
 ### FastAPI Endpoints
 
-- **GET `/data/raw/`**: Fetches raw benchmark subscores. Filters available for time periods like "last_7_days", "last_30_days", and "last_year".
+- **GET `/data/raw/`**: Fetches raw benchmark subscores. Filters available for time periods like "last_7_days", "last_30_days", and "last_year". Unsupported values are rejected with a 422 validation error.
   
 - **GET `/data/overall/`**: Retrieves overall normalized benchmark scores, filtered by the same time periods as the raw data.
   
-- **GET `/benchmark_charts/`**: Generates and retrieves benchmark charts based on the latest data.
+- **GET `/benchmark_charts/`**: Generates and retrieves benchmark charts based on the latest data. Returns a friendly "no data yet" page until the first successful benchmark run has been ingested.
   
-- **GET `/benchmark_historical_csv/`**: Downloads a CSV file containing historical raw and overall benchmark data.
+- **GET `/benchmark_historical_csv/`**: Downloads a CSV file containing historical raw and overall benchmark data. Rows are merged by closest timestamp *per host*, so every row always pairs a machine's raw metrics with that machine's own overall score.
 
 ## Scheduler
 
@@ -120,10 +131,8 @@ After the playbook runs, a Python script calculates the overall performance scor
 
 #### Data Normalization
 
-1. Each metric is normalized to a scale of 0 to 100.
-2. For each host, an overall score is calculated as the sum of the normalized metrics.
-
-#### Custom Weighting
+1. Each metric is normalized to a scale of 0 to 100, where 100 is always the **best** observed value across hosts. For lower-is-better metrics (`mutex_test__avg_latency`, `threads_test__avg_latency`), the host with the *lowest* latency receives 100. If every host reports the same value for a metric (including the single-host case), that metric contributes a neutral 50 instead of a misleading perfect score.
+2. For each host, an overall score is calculated as the weighted sum of the normalized metrics.
 
 The script allows for custom weighting, where you can specify the importance of each metric. For example, you might give CPU speed twice as much weight as disk I/O.
 

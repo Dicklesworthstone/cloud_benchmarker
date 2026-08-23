@@ -8,6 +8,65 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 ---
 
+## 2026-08-23 (2) -- Hardening, CI, and Lint
+
+### Scheduler (`web_app/app/utils/scheduler.py`)
+
+- **Eliminated a potential playbook hang**: `run_playbook` piped stdout and stderr separately but drained them sequentially, so a chatty stderr stream could fill its 64 KB pipe buffer while the reader blocked on stdout -- the classic `Popen` deadlock. Stderr is now merged into the stdout stream.
+- `parse_inventory` rewritten with a tolerant regex: any key order, extra inline variables, group headers, blank lines, and comments are handled; hosts without an `ansible_host` assignment are skipped (previously it split on spaces and crashed on reordered keys). Covered by two new tests.
+
+### Continuous Integration (`.github/workflows/ci.yml`)
+
+- Added a GitHub Actions workflow: ruff lint, pytest, and Ansible playbook syntax-check across Python 3.11/3.13 on every push to `main` and every PR.
+
+### Lint Policy (`pyproject.toml`)
+
+- Replaced the deprecated top-level ruff setting with an explicit `[tool.ruff.lint]` policy (`E/F/W/I`, `E501` still ignored) so lint results are deterministic regardless of machine-local ruff configuration; import ordering normalized across the codebase via `ruff --fix`.
+
+## 2026-08-23 -- Correctness and Robustness Overhaul
+
+### Scoring Engine (`script_to_generate_overall_benchmark_scores_from_subscores.py`)
+
+- **Fixed inverted latency normalization**: `mutex_test__avg_latency` and `threads_test__avg_latency` were normalized as higher-is-better, so the machine with the *worst* latency earned 100 and the machine with the *best* latency earned 0 -- actively rewarding worse hardware. Normalization is now direction-aware: 100 always means best-in-class.
+- A strictly superior host now scores exactly 100 under equal weighting (previously ~60 due to the latency inversion).
+- Single-host results and metrics where all hosts tie now contribute a neutral 50 instead of a fake perfect 100.
+- The input parser accepts strict JSON (the playbook's current output) in addition to the legacy quasi-JSON format with unquoted host keys.
+- Input/output paths derive from `os.path.expanduser("~")` instead of a hardcoded `/home/ubuntu`, aligning with the scheduler's paths for any control-node user.
+
+### Scheduler (`web_app/app/utils/scheduler.py`)
+
+- **Fixed permanent silent scheduler death**: previously the first `job()` ran inline before the polling loop started, so one exception (e.g., a failed playbook run producing an empty/garbage combined file, which the old parser crashed on via `"{}"` -> `"{{}}"`) killed the daemon thread and benchmarking never ran again while the web app kept serving stale data. The polling thread now starts first and every tick runs through `run_job_safely()`, which logs failures and retries on the next scheduled interval.
+- Replaced `os.getlogin()` (raises without a controlling terminal) with `getpass.getuser()`.
+- Combined-results loading tolerates empty files, strict JSON, and legacy quasi-JSON; empty data skips ingestion cleanly with a warning.
+- Playbook stderr is captured and logged; playbook subprocess sessions are closed deterministically.
+- Database sessions are closed after ingestion.
+
+### API (`web_app/app/routes/api_routes.py`)
+
+- `time_period` is validated as an enum query parameter: unsupported values now return a proper 422 instead of a 500 `ResponseValidationError`.
+- **Fixed cross-host score misattribution in the historical CSV**: `pd.merge_asof` joined on timestamp alone, arbitrarily attaching one host's overall score to another host's raw rows. The merge now keys on `hostname` as well.
+- Empty-database CSV requests return a header-only file instead of crashing.
+
+### Charts (`web_app/app/chart.py`)
+
+- Empty databases receive a friendly "no data yet" page instead of a `KeyError` 500.
+- The Plotly JavaScript bundle is inlined once per page instead of once per figure, halving the charts response size (~9.7 MB -> ~4.9 MB). Subscore figure construction extracted into `build_subscore_figure`.
+
+### Dashboard Wiring (`web_app/app/main.py`, `web_app/static/index.html`)
+
+- The root URL now serves the actual dashboard page; interactive API docs moved to `/docs`; `web_app/static/` is mounted at `/static`.
+- Fixed the dashboard iframe, which pointed at `/chart/` -- a route that has never existed; startup migrated to the non-deprecated FastAPI lifespan handler.
+
+### Ansible Playbook (`benchmark-playbook.yml`)
+
+- The combine stage no longer produces invalid pseudo-JSON (`hostA: {...},` with unquoted keys): it emits strict JSON via shell assembly, skips hosts whose result files are missing or empty, and writes to the invoking user's home directory.
+
+### Dependencies and Tooling
+
+- `requirements.txt` now pins major-version caps (previously fully unpinned); the deprecated standalone `plotly-express` shim was removed (use `plotly`'s built-in `plotly.express`).
+- Added `requirements-dev.txt` and a 16-test pytest suite covering scoring math direction, parser format tolerance, ingest upsert semantics, endpoint contracts (including regressions for each bug above), and empty-state behavior.
+- `data_models.py` modernized to SQLAlchemy 2.x `declarative_base` location and Pydantic v2 `ConfigDict`.
+
 ## 2026-02-21 / 2026-02-22 -- Licensing, Branding, and Code Quality
 
 ### Licensing

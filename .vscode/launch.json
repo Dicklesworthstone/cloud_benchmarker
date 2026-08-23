@@ -7,7 +7,7 @@
             "request": "launch",
             "module": "uvicorn",
             "console": "integratedTerminal",
-            "cwd": "/home/ubuntu/cloud_benchmarker",
+            "cwd": "${workspaceFolder}",
             "args": [
                 "web_app.app.main:app",
                 "--host",
