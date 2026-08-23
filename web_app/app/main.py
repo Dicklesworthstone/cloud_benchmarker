@@ -1,23 +1,44 @@
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from threading import Thread
+
 from web_app.app.database.init_db import init_db
 from web_app.app.routes.api_routes import router as api_router
 from web_app.app.utils.scheduler import start_scheduler
 from web_app.app.logger_config import setup_logger
-from fastapi import FastAPI
-from threading import Thread
 
 logger = setup_logger()
+
+STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
+
 description_string = """
 ☁️🏆 Cloud Benchmarker is your One-Stop-Shop to Quickly and Conveniently Test the Performance of Your Cloud Instances and Track It Over Time 🏆☁️
 """
-app = FastAPI(title="Cloud Benchmarker", description=description_string, version="1.0.0", docs_url="/")
 
-app.include_router(api_router)
 
-@app.on_event("startup")
-def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     logger.info("Application startup initiated.")
     init_db()
     scheduler_thread = Thread(target=start_scheduler)
     scheduler_thread.daemon = True  # Set thread as daemon
     scheduler_thread.start()
     logger.info("Application startup completed.")
+    yield
+    logger.info("Application shutdown completed.")
+
+
+app = FastAPI(title="Cloud Benchmarker", description=description_string, version="1.0.0", lifespan=lifespan)
+
+app.include_router(api_router)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.get("/", include_in_schema=False, response_class=FileResponse)
+async def dashboard():
+    """Serve the dashboard page; interactive API docs live at /docs."""
+    return FileResponse(STATIC_DIR / "index.html")

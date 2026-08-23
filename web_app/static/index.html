@@ -1,9 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Benchmark Metrics</title>
+    <title>Cloud Benchmarker Dashboard</title>
+    <style>
+        body { margin: 0; font-family: sans-serif; background: #203a43; }
+        nav { background: #0f2027; padding: 10px 20px; }
+        nav a { color: #bbd2c5; margin-right: 20px; text-decoration: none; font-weight: bold; }
+        iframe { border: 0; display: block; }
+    </style>
 </head>
 <body>
-    <iframe src="/chart/" width="100%" height="800"></iframe>
+    <nav>
+        <a href="/">Dashboard</a>
+        <a href="/docs">API Docs</a>
+        <a href="/benchmark_historical_csv/">Download CSV</a>
+    </nav>
+    <iframe src="/benchmark_charts/" width="100%" height="800"></iframe>
 </body>
 </html>
