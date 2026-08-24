@@ -23,6 +23,20 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 - Replaced the deprecated top-level ruff setting with an explicit `[tool.ruff.lint]` policy (`E/F/W/I`, `E501` still ignored) so lint results are deterministic regardless of machine-local ruff configuration; import ordering normalized across the codebase via `ruff --fix`.
 
+### Scheduler Staleness Guard (`web_app/app/utils/scheduler.py`)
+
+- The scheduler no longer attaches a previous run's overall scores to a new run's timestamp: an overall scores file older than the combined results (meaning this run's scoring step failed) is skipped with a warning, and raw subscores are ingested alone. Covered by a dedicated test; `should_run_job` staleness semantics are now unit-tested as well.
+
+### Ansible Compatibility (`benchmark-playbook.yml`) -- found by executing the full pipeline locally
+
+- **Fixed a fatal `set_fact`/`combine` failure on modern ansible-core**: the FileIO result was routed through an intermediate `regex_search` extraction whose lazily-evaluated value `combine` rejects (`expected dicts but got a '_AnsibleLazyTemplateDict'`), aborting the host before any results were saved -- i.e., the playbook silently produced zero results on current ansible releases. The FileIO shell task now emits pure JSON on stdout (prepare/cleanup output silenced) and merges via the same `stdout | from_json` pattern as the other four tests; the extraction and assert tasks were deleted.
+- **Replaced undefined `ansible_user` in the save/fetch tasks** with the connection-provided `ansible_user_dir` fact (`ansible_user` is an SSH-inventory variable and is undefined for `ansible_connection=local`).
+- Verified end-to-end: the full playbook runs green against local targets -- both single-host (ok=21/failed=0) and three-host fan-out (ok=15 x3) -- producing real sysbench results that the scheduler ingests and serves through every endpoint, including correct per-host score pairing in the CSV export.
+
+### Screenshots
+
+- Regenerated both README screenshots from the live application: the API docs now show Swagger at `/docs` (including the new `TimePeriod` enum schema), and the charts capture shows the dashboard's per-IP dropdown subscore chart and overall score chart with current Plotly rendering. Captures use synthetic seed data (three hosts over six runs).
+
 ## 2026-08-23 -- Correctness and Robustness Overhaul
 
 ### Scoring Engine (`script_to_generate_overall_benchmark_scores_from_subscores.py`)
