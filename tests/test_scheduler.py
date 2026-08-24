@@ -117,6 +117,7 @@ def test_ingest_uses_only_overall_scores_from_current_run(clean_db, tmp_path, mo
     stale_dir.mkdir()
     stale_file = stale_dir / "combined_cloud_benchmarker_results__overall_score_sorted__old.json"
     stale_file.write_text(json.dumps({"hostA": 1.0}))
+    monkeypatch.setattr(scheduler, "initial_setup", False)
     old = time.time() - 3600
     os.utime(stale_file, (old, old))
 

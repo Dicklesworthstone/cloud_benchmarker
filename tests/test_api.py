@@ -97,3 +97,22 @@ def test_charts_render_with_data(api_client):
     resp = api_client.get("/benchmark_charts/")
     assert resp.status_code == 200
     assert "plotly" in resp.text.lower()
+
+
+def test_csv_preserves_raw_rows_when_overall_history_missing(api_client):
+    from web_app.app.database.data_models import RawBenchmarkSubscores
+
+    session = _session(api_client)
+    session.add(RawBenchmarkSubscores(
+        datetime=datetime(2026, 8, 23, 12, 0, 0), hostname="hostA", IP_address="1.2.3.4",
+        **RAW_METRICS["hostA"][0],
+    ))
+    session.commit()
+    # No OverallNormalizedScore rows at all.
+
+    resp = api_client.get("/benchmark_historical_csv/")
+    assert resp.status_code == 200
+    rows = list(csv.DictReader(io.StringIO(resp.text)))
+    assert len(rows) == 1
+    assert rows[0]["IP_address"] == "1.2.3.4"
+    assert rows[0]["overall_score"] == ""
