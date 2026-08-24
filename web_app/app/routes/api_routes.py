@@ -90,8 +90,11 @@ def read_overall_data(db: Session = Depends(get_db), time_period: Optional[TimeP
             summary="Generate Benchmark Charts",
             description="Generate benchmark charts based on the available data. To access this endpoint, just navigate to the URL: <your_ip_address>:9999/benchmark_charts/. Returns a friendly placeholder page when no data has been ingested yet.",
             response_description="Generated benchmark charts.")
-async def benchmark_chart(db: Session = Depends(get_db)):
-    return await generate_benchmark_charts(db)
+def benchmark_chart(db: Session = Depends(get_db)):
+    # Deliberately sync: chart rendering is CPU/IO-bound pandas work, and a
+    # sync endpoint lets FastAPI run it in the threadpool instead of
+    # stalling the event loop for every other request.
+    return generate_benchmark_charts(db)
 
 
 @router.get("/benchmark_historical_csv/",
@@ -103,10 +106,11 @@ async def benchmark_chart(db: Session = Depends(get_db)):
 - It then merges the data based on the closest timestamp *per host*, so every row always pairs a host's raw metrics with that same host's overall score.
 - The final CSV file is generated in memory and returned as a download.
 
-### Examples:
 - To generate and download the CSV: `/benchmark_historical_csv/`""",
             response_description="A CSV file containing historical raw benchmarks and overall normalized scores.")
-async def get_benchmark_historical_csv(db: Session = Depends(get_db)):
+def get_benchmark_historical_csv(db: Session = Depends(get_db)):
+    # Deliberately sync: the pandas merge runs in FastAPI's threadpool so
+    # the event loop stays free while the CSV is built.
     logger.info("Generating benchmark historical CSV.")
     raw_data = db.query(RawBenchmarkSubscores).order_by(RawBenchmarkSubscores.datetime).all()
     overall_data = db.query(OverallNormalizedScore).order_by(OverallNormalizedScore.datetime).all()

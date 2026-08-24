@@ -99,7 +99,7 @@ def build_subscore_figure(raw_df):
     return subscore_fig
 
 
-async def generate_benchmark_charts(db: Session):
+def generate_benchmark_charts(db: Session):
     logger.info("Generating benchmark charts.")
 
     # Query for raw benchmark subscores

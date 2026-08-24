@@ -171,3 +171,13 @@ def test_load_combined_results_rejects_non_object_json(tmp_path):
     for blob in ('[1, 2, 3]', '"just a string"', '42', 'null', 'true'):
         p.write_text(blob)
         assert load_combined_results(str(p)) == {}, blob
+
+
+def test_ansible_paths_are_repo_anchored_and_absolute():
+    # Regression: the playbook used to be resolved against the process CWD,
+    # so launching the server from any other directory broke benchmarking.
+    from web_app.app.utils import scheduler
+
+    assert scheduler.PLAYBOOK_FILE_PATH.is_absolute()
+    assert scheduler.PLAYBOOK_FILE_PATH.is_file()
+    assert scheduler.ANSIBLE_INVENTORY_ABSOLUTE_PATH.is_absolute()

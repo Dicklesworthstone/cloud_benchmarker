@@ -5,6 +5,7 @@ import re
 import subprocess
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from threading import Lock, Thread
 
 import schedule
@@ -18,6 +19,15 @@ from web_app.app.logger_config import setup_logger
 logger = setup_logger()
 ANSIBLE_INVENTORY_FILE_PATH = decouple_config("ANSIBLE_INVENTORY_FILE_PATH", cast=str)
 PLAYBOOK_RUN_INTERVAL_IN_MINUTES = decouple_config("PLAYBOOK_RUN_INTERVAL_IN_MINUTES", cast=int)
+# The playbook and a relative inventory path are anchored to the repository
+# root so the app behaves identically no matter which directory the server
+# was launched from.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_ANSIBLE_INVENTORY = Path(ANSIBLE_INVENTORY_FILE_PATH).expanduser()
+ANSIBLE_INVENTORY_ABSOLUTE_PATH = (
+    _ANSIBLE_INVENTORY if _ANSIBLE_INVENTORY.is_absolute() else _REPO_ROOT / _ANSIBLE_INVENTORY
+)
+PLAYBOOK_FILE_PATH = _REPO_ROOT / "benchmark-playbook.yml"
 NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH = os.path.join(os.path.expanduser("~"), "benchmark_result_output_files/")
 COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH = os.path.join(os.path.expanduser("~"), "combined_cloud_benchmarker_results.json")
 initial_setup = False
@@ -105,7 +115,7 @@ def run_playbook():
     # Merge stderr into stdout: draining two pipes sequentially lets a chatty
     # stderr fill its pipe buffer while we block on stdout -- a classic hang.
     process = subprocess.Popen(
-        ["ansible-playbook", "-v", "-i", ANSIBLE_INVENTORY_FILE_PATH, "benchmark-playbook.yml"],
+        ["ansible-playbook", "-v", "-i", str(ANSIBLE_INVENTORY_ABSOLUTE_PATH), str(PLAYBOOK_FILE_PATH)],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True
