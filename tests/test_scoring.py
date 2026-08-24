@@ -97,3 +97,20 @@ def test_parse_combined_results_accepts_all_historical_formats():
 
     assert scoring.parse_combined_results("{}") == {}
     assert scoring.parse_combined_results("") == {}
+
+
+def test_empty_data_scores_to_empty_dict():
+    assert scoring.calculate_overall_performance({}) == {}
+
+
+def test_hosts_with_missing_metrics_score_neutrally_for_gaps():
+    # The playbook skips failed tests per host, so a host may report fewer
+    # metrics; missing metrics contribute a neutral 50 instead of crashing.
+    full = {"cpu_speed_test__events_per_second": 100.0,
+            "fileio_test__reads_per_second": 200.0}
+    partial = {"cpu_speed_test__events_per_second": 50.0}
+    scores = scoring.calculate_overall_performance({"full": full, "partial": partial})
+    # cpu: full is best (100), partial is worst (0).
+    # fileio: only "full" reports it -> no comparison signal -> neutral 50.
+    assert scores["full"] == pytest.approx(75.0)
+    assert scores["partial"] == pytest.approx(25.0)  # worst cpu (0) + neutral fileio (50)

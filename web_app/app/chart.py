@@ -46,12 +46,17 @@ def build_subscore_figure(raw_df):
                         visible=(col == 'cpu_speed_test__events_per_second'))
             )
 
+    # Trace names are "IP - metric". Dropdown visibility must match the name
+    # segments EXACTLY: a plain substring test makes IP "10.0.0.1" also
+    # reveal "10.0.0.10" traces.
+    parsed_names = [(trace.name.split(' - ', 1) + [''])[:2] for trace in subscore_fig.data]
+
     # Create buttons for dropdown by metric
     buttons_by_metric = []
     for col in METRIC_COLUMNS:
         buttons_by_metric.append(
             dict(
-                args=[{"visible": [col in trace.name for trace in subscore_fig.data]}],
+                args=[{"visible": [metric == col for _, metric in parsed_names]}],
                 label=col,
                 method="update"
             )
@@ -61,7 +66,7 @@ def build_subscore_figure(raw_df):
     for ip in raw_df['IP_address'].unique():
         buttons_by_ip.append(
             dict(
-                args=[{"visible": [ip in trace.name for trace in subscore_fig.data]}],
+                args=[{"visible": [parsed_ip == ip for parsed_ip, _ in parsed_names]}],
                 label=ip,
                 method="update"
             )

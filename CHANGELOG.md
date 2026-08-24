@@ -23,6 +23,12 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 - Replaced the deprecated top-level ruff setting with an explicit `[tool.ruff.lint]` policy (`E/F/W/I`, `E501` still ignored) so lint results are deterministic regardless of machine-local ruff configuration; import ordering normalized across the codebase via `ruff --fix`.
 
+### Fresh-Eyes Audit Fixes
+
+- **Charts (`web_app/app/chart.py`)**: dropdown visibility used a plain substring test, so selecting IP `10.0.0.1` also revealed traces for `10.0.0.10`, `10.0.0.100`, etc. Trace names are now parsed into exact `(IP, metric)` segments before matching. Covered by dedicated unit tests.
+- **Scheduler (`web_app/app/utils/scheduler.py`)**: a non-reentrant lock now guards `run_job_safely` so a long-running playbook can never stack a second concurrent benchmark run -- overlapping ticks are skipped with a warning. The configured interval is clamped to at least one minute (the `schedule` library rejects smaller values). Both covered by tests.
+- **Scoring (`script_to_generate_overall_benchmark_scores_from_subscores.py`)**: hosts may report different metric subsets (the playbook skips failed tests per host); the normalizer previously crashed with a `KeyError` on the first host's metrics missing from a later host. It now normalizes each metric across the hosts that reported it and contributes a neutral 50 for unreported metrics. Empty input returns `{}`. Both covered by tests.
+
 ### Scheduler Staleness Guard (`web_app/app/utils/scheduler.py`)
 
 - The scheduler no longer attaches a previous run's overall scores to a new run's timestamp: an overall scores file older than the combined results (meaning this run's scoring step failed) is skipped with a warning, and raw subscores are ingested alone. Covered by a dedicated test; `should_run_job` staleness semantics are now unit-tested as well.

@@ -53,9 +53,19 @@ def calculate_overall_performance(data, weighting="equal_weighting", custom_weig
     weights are normalized to sum to 1 and must cover every metric present
     in ``data``.
     """
+    if not data:
+        return {}
+
     overall_scores = {}
     host_names = list(data.keys())
+    # Hosts may report different metric subsets (the playbook skips failed
+    # tests per host), so take an ordered union: first host's order, then
+    # any extra metrics in encounter order.
     metrics = list(data[host_names[0]].keys())
+    for host in host_names[1:]:
+        for metric in data[host]:
+            if metric not in metrics:
+                metrics.append(metric)
 
     if weighting == "custom":
         if not custom_weights:
@@ -71,16 +81,18 @@ def calculate_overall_performance(data, weighting="equal_weighting", custom_weig
         raise ValueError(f"Unknown weighting mode: {weighting}")
 
     for metric in metrics:
-        values = [data[host][metric] for host in host_names]
-        max_value, min_value = max(values), min(values)
+        reported = [data[host][metric] for host in host_names if metric in data[host]]
+        max_value, min_value = max(reported), min(reported)
         for host in host_names:
-            value = data[host][metric]
-            if max_value == min_value:
+            if metric not in data[host]:
+                # Metric not reported by this host: no comparative signal.
+                normalized = NEUTRAL_SCORE
+            elif max_value == min_value:
                 normalized = NEUTRAL_SCORE
             elif metric in LOWER_IS_BETTER_METRICS:
-                normalized = ((max_value - value) / (max_value - min_value)) * 100
+                normalized = ((max_value - data[host][metric]) / (max_value - min_value)) * 100
             else:
-                normalized = ((value - min_value) / (max_value - min_value)) * 100
+                normalized = ((data[host][metric] - min_value) / (max_value - min_value)) * 100
             overall_scores.setdefault(host, []).append(normalized)
 
     result = {}

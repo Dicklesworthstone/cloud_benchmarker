@@ -151,3 +151,14 @@ def test_should_run_job_staleness_semantics(tmp_path):
     assert should_run_job([str(stale)]) is True
 
     assert should_run_job([str(tmp_path / "missing.json")]) is False
+
+
+def test_run_job_safely_skips_when_previous_tick_still_running(monkeypatch):
+    # A long playbook must never stack a second concurrent benchmark run.
+    from web_app.app.utils import scheduler
+
+    called = []
+    monkeypatch.setattr(scheduler, "job", lambda: called.append(1))
+    with scheduler._job_lock:
+        scheduler.run_job_safely()
+    assert called == []

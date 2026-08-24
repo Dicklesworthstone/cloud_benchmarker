@@ -5,7 +5,7 @@ import re
 import subprocess
 import time
 from datetime import datetime, timedelta
-from threading import Thread
+from threading import Lock, Thread
 
 import schedule
 from decouple import config as decouple_config
@@ -155,12 +155,25 @@ def job():
         logger.warning("No JSON files found in the specified directory.")
 
 
+_job_lock = Lock()
+
+
 def run_job_safely():
-    """Run one scheduler tick without ever killing the scheduling loop."""
+    """Run one scheduler tick without ever killing the scheduling loop.
+
+    The lock is not reentrant and is never waited on: if a previous tick is
+    still running (e.g., a long playbook over slow hosts), the new tick is
+    skipped rather than stacking a second concurrent benchmark run.
+    """
+    if not _job_lock.acquire(blocking=False):
+        logger.warning("Previous scheduled job still in progress; skipping this tick.")
+        return
     try:
         job()
     except Exception:
         logger.exception("Scheduled benchmark job failed; will retry on the next scheduled tick.")
+    finally:
+        _job_lock.release()
 
 
 def should_run_job(file_paths):
@@ -179,8 +192,9 @@ def should_run_job(file_paths):
 def start_scheduler():
     logger.info("Scheduler started.")
     # Register the guarded wrapper so an exception inside one job can never
-    # silently terminate periodic benchmarking.
-    schedule.every(PLAYBOOK_RUN_INTERVAL_IN_MINUTES).minutes.do(run_job_safely)
+    # silently terminate periodic benchmarking; clamp the interval because
+    # the schedule library rejects anything below one minute.
+    schedule.every(max(1, PLAYBOOK_RUN_INTERVAL_IN_MINUTES)).minutes.do(run_job_safely)
 
     def run():
         while True:
