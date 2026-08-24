@@ -133,9 +133,17 @@ def job():
     json_files = glob.glob(f'{NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH}/*.json')
     if json_files:  # Check if the list is not empty
         latest_overall_file = max(json_files, key=os.path.getctime)
-        logger.info(f"Reading overall data from JSON file at {latest_overall_file}.")
-        with open(latest_overall_file) as f:
-            overall_data = json.load(f)
+        overall_data = {}
+        # The scoring script runs after the combine stage, so a file older
+        # than the combined results belongs to a PREVIOUS run (this run's
+        # scoring step failed). Attaching it would mislabel stale scores.
+        if os.path.getctime(latest_overall_file) >= datetime_from_file.timestamp():
+            logger.info(f"Reading overall data from JSON file at {latest_overall_file}.")
+            with open(latest_overall_file) as f:
+                overall_data = json.load(f)
+        else:
+            logger.warning("Latest overall scores file predates this run's combined results; "
+                           "ingesting raw subscores without overall scores.")
         logger.info("Ingesting data into the database.")
         db = SessionLocal()
         try:

@@ -100,3 +100,34 @@ def test_parse_inventory_skips_hosts_without_address(tmp_path):
     inventory = tmp_path / "hosts.ini"
     inventory.write_text("localhost ansible_connection=local\nweb01 ansible_host=10.0.0.1\n")
     assert parse_inventory(str(inventory)) == {"web01": "10.0.0.1"}
+
+
+def test_ingest_uses_only_overall_scores_from_current_run(clean_db, tmp_path, monkeypatch):
+    # Regression: if this run's scoring step failed, the newest overall file
+    # predates the combined results; its stale scores must not be attached
+    # to the new run's timestamp.
+    import json
+    import os
+    import time
+
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.utils import scheduler
+
+    stale_dir = tmp_path / "benchmark_result_output_files"
+    stale_dir.mkdir()
+    stale_file = stale_dir / "combined_cloud_benchmarker_results__overall_score_sorted__old.json"
+    stale_file.write_text(json.dumps({"hostA": 1.0}))
+    old = time.time() - 3600
+    os.utime(stale_file, (old, old))
+
+    combined = tmp_path / "combined_cloud_benchmarker_results.json"
+    combined.write_text(json.dumps({"hostA": dict(RAW_METRICS_HOST_A)}))
+    monkeypatch.setattr(scheduler, "NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH", str(stale_dir) + "/")
+    monkeypatch.setattr(scheduler, "COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH", str(combined))
+    monkeypatch.setattr(scheduler, "should_run_job", lambda files: False)
+    monkeypatch.setattr(scheduler, "parse_inventory", lambda path: {"hostA": "1.2.3.4"})
+
+    scheduler.job()
+
+    assert clean_db.query(RawBenchmarkSubscores).count() == 1
+    assert clean_db.query(OverallNormalizedScore).count() == 0
