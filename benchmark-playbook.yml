@@ -48,32 +48,19 @@
     - name: Run FileIO sysbench test and collect key metrics
       shell: |
         set -e
-        sysbench fileio prepare
+        sysbench fileio prepare >/dev/null 2>&1
         output=$(sysbench fileio --file-test-mode=rndrw run)
-        sysbench fileio cleanup
+        sysbench fileio cleanup >/dev/null 2>&1
         fileio_reads=$(echo "$output" | grep "reads/s:" | awk '{print $2}')
         echo "{\"fileio_test__reads_per_second\": $fileio_reads}"
       register: fileio_result
       ignore_errors: yes
       changed_when: false
 
-    - name: Extract JSON from FileIO stdout
-      set_fact:
-        fileio_json: "{{ fileio_result.stdout | regex_search('{.*}') }}"
-      when: fileio_result is not failed
-
-    - name: Assert that fileio_json is defined and not empty
-      assert:
-        that:
-          - fileio_json is defined
-          - fileio_json != ''
-        fail_msg: "fileio_json is not defined or empty."
-      when: fileio_result is not failed
-
     - name: Update benchmark results only if the FileIO test succeeded
       set_fact:
-        benchmark_results: "{{ benchmark_results | combine(fileio_json) }}"
-      when: fileio_result is not failed and fileio_json is defined
+        benchmark_results: "{{ benchmark_results | combine(fileio_result.stdout | from_json) }}"
+      when: fileio_result is not failed
 
     # Mutex Test
     - name: Run Mutex sysbench test and collect key metrics
@@ -110,12 +97,12 @@
     - name: Save benchmark results to JSON file
       copy:
         content: "{{ benchmark_results | to_nice_json }}"
-        dest: "/home/{{ ansible_user }}/cloud_benchmarker_results.json"
+        dest: "{{ ansible_user_dir }}/cloud_benchmarker_results.json"
       become: true
 
     - name: Fetch benchmark results to control node
       fetch:
-        src: "/home/{{ ansible_user }}/cloud_benchmarker_results.json"
+        src: "{{ ansible_user_dir }}/cloud_benchmarker_results.json"
         dest: "/tmp/{{ inventory_hostname }}_cloud_benchmarker_results/"
         flat: yes
 
