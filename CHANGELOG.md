@@ -23,6 +23,12 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 - Replaced the deprecated top-level ruff setting with an explicit `[tool.ruff.lint]` policy (`E/F/W/I`, `E501` still ignored) so lint results are deterministic regardless of machine-local ruff configuration; import ordering normalized across the codebase via `ruff --fix`.
 
+### Deep Review (import-graph sweep)
+
+- **Anchored Ansible paths to the repository root** (`web_app/app/utils/scheduler.py`): the playbook path was resolved against the process CWD, so launching the server from any other directory (e.g., a systemd unit or `PYTHONPATH`-only deployment) made every benchmark tick fail with `FileNotFoundError` -- silently, forever. The playbook and a relative inventory path from `.env` are now anchored to the repo root via the module location; absolute paths in `.env` are still honored. Regression-tested and verified by booting the app from `/tmp`.
+- **Converted blocking endpoints from `async def` to `def`** (`/benchmark_charts/`, `/benchmark_historical_csv/`, and `generate_benchmark_charts`): they contain no `await`s but seconds of pandas/plotly work, which monopolized the event loop and stalled every other request while rendering. Sync endpoints run in FastAPI's threadpool instead.
+- Investigated and cleared: SQLAlchemy 2.0's file-SQLite `QueuePool` was suspected of cross-thread connection reuse errors (scheduler thread + request worker threads share one engine); an empirical probe showed the pysqlite dialect already permits cross-thread checkout, so no change was required.
+
 ### Input Hardening (fresh-eyes audit, round 2)
 
 - Both combined-results parsers (`parse_combined_results`, `load_combined_results`) previously accepted any valid JSON -- a bare number, list, string, or boolean flowed through and crashed the consumer (`AttributeError` on `.keys()`/`.items()`), which the scheduler would then retry forever on permanently malformed input. Non-object JSON is now rejected as empty with a warning.
