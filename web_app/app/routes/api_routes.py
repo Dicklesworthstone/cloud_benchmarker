@@ -132,8 +132,7 @@ async def get_benchmark_historical_csv(db: Session = Depends(get_db)):
     if raw_df.empty or overall_df.empty:
         # Not enough data on one side to correlate; emit whatever exists
         # (header-only when the database is empty) instead of crashing.
-        merged_df = pd.merge(raw_df.drop(columns=["IP_address"]), overall_df,
-                             on=["datetime", "hostname"], how="outer")
+        merged_df = pd.merge(raw_df, overall_df, on=["datetime", "hostname"], how="outer")
     else:
         # Merge per host so scores can never attach to the wrong machine.
         merged_df = pd.merge_asof(
