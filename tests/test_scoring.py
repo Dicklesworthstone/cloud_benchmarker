@@ -114,3 +114,50 @@ def test_hosts_with_missing_metrics_score_neutrally_for_gaps():
     # fileio: only "full" reports it -> no comparison signal -> neutral 50.
     assert scores["full"] == pytest.approx(75.0)
     assert scores["partial"] == pytest.approx(25.0)  # worst cpu (0) + neutral fileio (50)
+
+
+def test_parser_fuzz_returns_dicts_or_raises_json_decode_error():
+    # Contract: for ARBITRARY input the parser either returns a dict or
+    # raises exactly JSONDecodeError -- never a list/int/str, never any
+    # other exception type.
+    import json
+    import random
+
+    rng = random.Random(1234)
+    alphabet = '{}[]",:0123456789.eE-truefalsn hostABC \t'
+    for _ in range(1000):
+        blob = "".join(rng.choice(alphabet) for _ in range(rng.randint(0, 80)))
+        try:
+            out = scoring.parse_combined_results(blob)
+        except json.JSONDecodeError:
+            continue
+        except Exception as exc:  # noqa: B902 -- contract violation if reached
+            raise AssertionError(f"parser raised {type(exc).__name__} for {blob!r}") from exc
+        assert isinstance(out, dict), f"parser returned {type(out).__name__} for {blob!r}"
+
+
+def test_scorer_fuzz_scores_always_within_zero_to_100():
+    # README contract: every score is a 0..100 normalization, every input
+    # host appears in the output, regardless of value signs/magnitudes,
+    # missing metrics, or ties.
+    import random
+
+    rng = random.Random(42)
+    metric_pool = list(HOST_A.keys())
+    for _ in range(400):
+        data = {}
+        for h in range(rng.randint(1, 6)):
+            chosen = rng.sample(metric_pool, rng.randint(1, len(metric_pool)))
+            data[f"host{h}"] = {m: rng.choice([
+                rng.uniform(-10000, 10000),
+                rng.uniform(0, 1),
+                rng.uniform(1e6, 1e9),
+            ]) for m in chosen}
+        weighting = rng.choice(["equal_weighting", "custom"])
+        weights = {m: rng.uniform(0.1, 5.0) for m in metric_pool}
+        scores = scoring.calculate_overall_performance(
+            data, weighting=weighting,
+            custom_weights=weights if weighting == "custom" else None)
+        assert set(scores) == set(data)
+        for host, value in scores.items():
+            assert 0.0 <= value <= 100.0, (host, value, data)

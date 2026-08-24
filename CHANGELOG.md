@@ -23,6 +23,11 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 - Replaced the deprecated top-level ruff setting with an explicit `[tool.ruff.lint]` policy (`E/F/W/I`, `E501` still ignored) so lint results are deterministic regardless of machine-local ruff configuration; import ordering normalized across the codebase via `ruff --fix`.
 
+### Input Hardening (fresh-eyes audit, round 2)
+
+- Both combined-results parsers (`parse_combined_results`, `load_combined_results`) previously accepted any valid JSON -- a bare number, list, string, or boolean flowed through and crashed the consumer (`AttributeError` on `.keys()`/`.items()`), which the scheduler would then retry forever on permanently malformed input. Non-object JSON is now rejected as empty with a warning.
+- Added seeded fuzz tests pinning two core contracts: the parser returns a dict or raises exactly `JSONDecodeError` for 1,000 arbitrary inputs, and the scorer always maps every input host to a score within 0..100 across 400 randomized workloads (negative values, extreme magnitudes, missing metrics, ties, both weighting modes). Suite now 29 tests.
+
 ### Fresh-Eyes Audit Fixes
 
 - **Charts (`web_app/app/chart.py`)**: dropdown visibility used a plain substring test, so selecting IP `10.0.0.1` also revealed traces for `10.0.0.10`, `10.0.0.100`, etc. Trace names are now parsed into exact `(IP, metric)` segments before matching. Covered by dedicated unit tests.

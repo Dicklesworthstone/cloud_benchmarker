@@ -64,10 +64,14 @@ def load_combined_results(file_path):
     if not content:
         return {}
     try:
-        return json.loads(content)
+        parsed = json.loads(content)
     except json.JSONDecodeError:
         content = re.sub(r'(\w+): {', r'"\1": {', content)
-        return json.loads('{' + content + '}')
+        parsed = json.loads('{' + content + '}')
+    if not isinstance(parsed, dict):
+        logger.warning(f"Results file at {file_path} contains JSON that is not an object; ignoring it.")
+        return {}
+    return parsed
 
 
 def ingest_data(db: Session, raw_data, overall_data, datetime_from_file, host_to_ip):

@@ -40,10 +40,15 @@ def parse_combined_results(content):
     if not content:
         return {}
     try:
-        return json.loads(content)
+        parsed = json.loads(content)
     except json.JSONDecodeError:
         massaged = re.sub(r'(\w+): {', r'"\1": {', content)
-        return json.loads('{' + massaged + '}')
+        parsed = json.loads('{' + massaged + '}')
+    if not isinstance(parsed, dict):
+        # Valid JSON but not an object (e.g. a bare number, list, or string):
+        # no host data to score.
+        return {}
+    return parsed
 
 
 def calculate_overall_performance(data, weighting="equal_weighting", custom_weights=None):

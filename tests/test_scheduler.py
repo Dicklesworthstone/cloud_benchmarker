@@ -162,3 +162,12 @@ def test_run_job_safely_skips_when_previous_tick_still_running(monkeypatch):
     with scheduler._job_lock:
         scheduler.run_job_safely()
     assert called == []
+
+
+def test_load_combined_results_rejects_non_object_json(tmp_path):
+    from web_app.app.utils.scheduler import load_combined_results
+
+    p = tmp_path / "combined.json"
+    for blob in ('[1, 2, 3]', '"just a string"', '42', 'null', 'true'):
+        p.write_text(blob)
+        assert load_combined_results(str(p)) == {}, blob
