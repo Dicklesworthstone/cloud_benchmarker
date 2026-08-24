@@ -132,3 +132,22 @@ def test_ingest_uses_only_overall_scores_from_current_run(clean_db, tmp_path, mo
 
     assert clean_db.query(RawBenchmarkSubscores).count() == 1
     assert clean_db.query(OverallNormalizedScore).count() == 0
+
+
+def test_should_run_job_staleness_semantics(tmp_path):
+    import os
+    import time
+
+    from web_app.app.utils.scheduler import should_run_job
+
+    fresh = tmp_path / "fresh.json"
+    fresh.write_text("{}")
+    assert should_run_job([str(fresh)]) is False
+
+    stale = tmp_path / "stale.json"
+    stale.write_text("{}")
+    old = time.time() - 4 * 3600
+    os.utime(stale, (old, old))
+    assert should_run_job([str(stale)]) is True
+
+    assert should_run_job([str(tmp_path / "missing.json")]) is False
