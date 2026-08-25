@@ -32,7 +32,9 @@ Now simply edit the Ansible inventory file (`my_ansible_inventory_file.ini`) to 
 
 `uvicorn web_app.app.main:app --host 0.0.0.0 --port 9999`
 
-Note that the first time you run it, it will immediately create the required directories and start the benchmarking playbook. Thereafter, it will do another benchmark every 6 hours (you can set the schedule to any interval by editing the value in the `.env` file). 
+Note that the first time you run it, it will immediately create the required directories and start the benchmarking playbook. Thereafter, it will do another benchmark every 6 hours (you can set the schedule to any interval by editing the value in the `.env` file).
+
+Two prerequisites for the target machines: the playbook installs packages with `become: true`, so the Ansible user needs **passwordless sudo** (or configure `ansible_become_pass`), and the example inventory sets `StrictHostKeyChecking=accept-new` so first contact with a new host succeeds instead of failing SSH host-key verification.
 
 > Run the server with a **single uvicorn worker** (the default). Each worker process spawns its own benchmark scheduler, so multiple workers would run duplicate benchmarking cycles against your instances.
 

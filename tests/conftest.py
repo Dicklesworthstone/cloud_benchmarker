@@ -18,6 +18,16 @@ if _REPO_ROOT not in sys.path:
 import pytest  # noqa: E402
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Release pooled SQLite connections so interpreter shutdown is quiet."""
+    try:
+        from web_app.app.database.init_db import engine
+
+        engine.dispose()
+    except Exception:
+        pass
+
+
 @pytest.fixture()
 def db_session():
     from web_app.app.database.data_models import Base
