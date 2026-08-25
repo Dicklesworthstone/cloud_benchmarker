@@ -34,6 +34,8 @@ Now simply edit the Ansible inventory file (`my_ansible_inventory_file.ini`) to 
 
 Note that the first time you run it, it will immediately create the required directories and start the benchmarking playbook. Thereafter, it will do another benchmark every 6 hours (you can set the schedule to any interval by editing the value in the `.env` file). 
 
+> Run the server with a **single uvicorn worker** (the default). Each worker process spawns its own benchmark scheduler, so multiple workers would run duplicate benchmarking cycles against your instances.
+
 ### Running the Tests
 
 ```bash
