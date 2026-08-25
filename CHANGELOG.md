@@ -23,6 +23,11 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 - Replaced the deprecated top-level ruff setting with an explicit `[tool.ruff.lint]` policy (`E/F/W/I`, `E501` still ignored) so lint results are deterministic regardless of machine-local ruff configuration; import ordering normalized across the codebase via `ruff --fix`.
 
+### Coverage-Driven Consistency Fix
+
+- **Fixed inconsistent degradation in the scheduler**: when raw results existed but no overall scores file had ever been produced, `job()` skipped ingestion entirely -- permanently losing that run's raw subscores, since the next run overwrites the combined results file. Raw data now always ingests when present; overall scores merge best-effort (fresh file, stale file, or none), matching the stale-file path's behavior. Regression-tested; suite grown to 36 tests with new coverage of the chart composition paths (raw-only / overall-only), the overall endpoint's time filter, and the first-boot playbook branch.
+- Added `pytest-cov` to `requirements-dev.txt`; current branch coverage: `chart.py`/`api_routes.py`/`data_models.py` 100%, `scheduler.py` 87% (remainder is the subprocess/thread-loop body verified by live end-to-end runs).
+
 ### Deep Review (import-graph sweep)
 
 - **Anchored Ansible paths to the repository root** (`web_app/app/utils/scheduler.py`): the playbook path was resolved against the process CWD, so launching the server from any other directory (e.g., a systemd unit or `PYTHONPATH`-only deployment) made every benchmark tick fail with `FileNotFoundError` -- silently, forever. The playbook and a relative inventory path from `.env` are now anchored to the repo root via the module location; absolute paths in `.env` are still honored. Regression-tested and verified by booting the app from `/tmp`.

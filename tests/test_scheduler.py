@@ -181,3 +181,64 @@ def test_ansible_paths_are_repo_anchored_and_absolute():
     assert scheduler.PLAYBOOK_FILE_PATH.is_absolute()
     assert scheduler.PLAYBOOK_FILE_PATH.is_file()
     assert scheduler.ANSIBLE_INVENTORY_ABSOLUTE_PATH.is_absolute()
+
+
+def test_job_runs_playbook_on_initial_setup_then_resets_flag(monkeypatch, tmp_path):
+    # Covers the first-boot branch: initial_setup forces one playbook run
+    # regardless of staleness, then the flag resets so later ticks rely on
+    # the staleness check alone.
+    import json
+
+    from web_app.app.utils import scheduler
+
+    combined = tmp_path / "combined_cloud_benchmarker_results.json"
+    combined.write_text(json.dumps({"hostA": dict(RAW_METRICS_HOST_A)}))
+    monkeypatch.setattr(scheduler, "initial_setup", True)
+    monkeypatch.setattr(scheduler, "COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH", str(combined))
+    monkeypatch.setattr(scheduler, "should_run_job", lambda files: False)
+    monkeypatch.setattr(scheduler, "parse_inventory", lambda path: {"hostA": "1.2.3.4"})
+    playbook_calls = []
+    monkeypatch.setattr(scheduler, "run_playbook", lambda: playbook_calls.append(1))
+
+    scheduler.job()
+
+    assert playbook_calls == [1]
+    assert scheduler.initial_setup is False
+
+
+def test_job_ingests_raw_when_no_overall_file_exists(clean_db, monkeypatch, tmp_path):
+    # Regression: an absent overall file used to skip ingestion entirely,
+    # permanently losing that run's raw subscores (the combined file is
+    # overwritten by the next run). Raw data must ingest regardless.
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.utils import scheduler
+
+    combined = tmp_path / "combined_cloud_benchmarker_results.json"
+    combined.write_text(json.dumps({"hostA": dict(RAW_METRICS_HOST_A)}))
+    empty_dir = tmp_path / "benchmark_result_output_files"
+    empty_dir.mkdir()
+    monkeypatch.setattr(scheduler, "initial_setup", False)
+    monkeypatch.setattr(scheduler, "COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH", str(combined))
+    monkeypatch.setattr(scheduler, "NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH", str(empty_dir) + "/")
+    monkeypatch.setattr(scheduler, "should_run_job", lambda files: False)
+    monkeypatch.setattr(scheduler, "parse_inventory", lambda path: {"hostA": "1.2.3.4"})
+
+    scheduler.job()
+
+    assert clean_db.query(RawBenchmarkSubscores).count() == 1
+    assert clean_db.query(OverallNormalizedScore).count() == 0
+
+
+def test_job_skips_ingestion_when_combined_file_empty(clean_db, monkeypatch, tmp_path):
+    from web_app.app.database.data_models import RawBenchmarkSubscores
+    from web_app.app.utils import scheduler
+
+    combined = tmp_path / "combined_cloud_benchmarker_results.json"
+    combined.write_text("{}")
+    monkeypatch.setattr(scheduler, "initial_setup", False)
+    monkeypatch.setattr(scheduler, "COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH", str(combined))
+    monkeypatch.setattr(scheduler, "should_run_job", lambda files: False)
+
+    scheduler.job()
+
+    assert clean_db.query(RawBenchmarkSubscores).count() == 0

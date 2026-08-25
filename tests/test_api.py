@@ -116,3 +116,44 @@ def test_csv_preserves_raw_rows_when_overall_history_missing(api_client):
     assert len(rows) == 1
     assert rows[0]["IP_address"] == "1.2.3.4"
     assert rows[0]["overall_score"] == ""
+
+
+def test_overall_time_filter_excludes_old_rows(api_client):
+    session = _session(api_client)
+    seed_benchmark_rows(session, datetime.now() - timedelta(days=400),
+                        {"ancient": (dict(RAW_METRICS["hostB"][0]), 1.0)})
+    seed_benchmark_rows(session, datetime.now(), {"fresh": (dict(RAW_METRICS["hostA"][0]), 2.0)})
+
+    resp = api_client.get("/data/overall/?time_period=last_year")
+    assert [row["hostname"] for row in resp.json()] == ["fresh"]
+
+
+def test_charts_render_raw_only_without_overall_figure(api_client):
+    from web_app.app.database.data_models import RawBenchmarkSubscores
+
+    session = _session(api_client)
+    session.add(RawBenchmarkSubscores(
+        datetime=datetime(2026, 8, 23, 12, 0, 0), hostname="hostA", IP_address="1.2.3.4",
+        **RAW_METRICS["hostA"][0],
+    ))
+    session.commit()
+
+    resp = api_client.get("/benchmark_charts/")
+    assert resp.status_code == 200
+    assert "cpu_speed_test__events_per_second" in resp.text
+    assert "Overall Normalized Scores Over Time" not in resp.text
+
+def test_charts_render_overall_only_without_subscore_figure(api_client):
+    from web_app.app.database.data_models import OverallNormalizedScore
+
+    session = _session(api_client)
+    session.add(OverallNormalizedScore(
+        datetime=datetime(2026, 8, 23, 12, 0, 0), hostname="hostA",
+        IP_address="1.2.3.4", overall_score=87.5,
+    ))
+    session.commit()
+
+    resp = api_client.get("/benchmark_charts/")
+    assert resp.status_code == 200
+    assert "Overall Normalized Scores Over Time" in resp.text
+    assert "cpu_speed_test__events_per_second" not in resp.text

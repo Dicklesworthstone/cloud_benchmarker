@@ -145,9 +145,9 @@ def job():
     logger.info("Parsing inventory file.")
     host_to_ip = parse_inventory(ANSIBLE_INVENTORY_FILE_PATH)
     json_files = glob.glob(f'{NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH}/*.json')
-    if json_files:  # Check if the list is not empty
+    overall_data = {}
+    if json_files:
         latest_overall_file = max(json_files, key=os.path.getctime)
-        overall_data = {}
         # The scoring script runs after the combine stage, so a file older
         # than the combined results belongs to a PREVIOUS run (this run's
         # scoring step failed). Attaching it would mislabel stale scores.
@@ -158,15 +158,17 @@ def job():
         else:
             logger.warning("Latest overall scores file predates this run's combined results; "
                            "ingesting raw subscores without overall scores.")
-        logger.info("Ingesting data into the database.")
-        db = SessionLocal()
-        try:
-            ingest_data(db, raw_data, overall_data, datetime_from_file, host_to_ip)
-        finally:
-            db.close()
-        logger.info("Scheduled job completed!")
     else:
-        logger.warning("No JSON files found in the specified directory.")
+        # No overall scores were ever produced. Raw subscores are still
+        # valid data; skipping them entirely would lose this run forever.
+        logger.warning("No overall scores files found; ingesting raw subscores without overall scores.")
+    logger.info("Ingesting data into the database.")
+    db = SessionLocal()
+    try:
+        ingest_data(db, raw_data, overall_data, datetime_from_file, host_to_ip)
+    finally:
+        db.close()
+    logger.info("Scheduled job completed!")
 
 
 _job_lock = Lock()
