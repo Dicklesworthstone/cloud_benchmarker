@@ -23,6 +23,10 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 - Replaced the deprecated top-level ruff setting with an explicit `[tool.ruff.lint]` policy (`E/F/W/I`, `E501` still ignored) so lint results are deterministic regardless of machine-local ruff configuration; import ordering normalized across the codebase via `ruff --fix`.
 
+### Scheduler Intervals Now Behave As Documented
+
+- **Fixed the hardcoded 3-hour staleness threshold silently overriding shorter intervals**: `should_run_job` compared file age against a fixed `timedelta(hours=3)`, so `PLAYBOOK_RUN_INTERVAL_IN_MINUTES=60` still only benchmarked every ~3 hours, contradicting the README's "set the schedule to any interval". The threshold is now half the configured interval -- the 360-minute default yields the historical 3 hours (behavior unchanged out of the box), while shorter intervals genuinely take effect. Both behaviors are regression-tested (suite now 41 tests).
+
 ### Static Analysis Adoption (mypy + bandit)
 
 - **Migrated `data_models.py` to SQLAlchemy 2.0's `class Base(DeclarativeBase)` style** -- the recommended modern form, and it makes the models fully transparent to static type checkers (`mypy` now passes clean on all 8 source files under mypy 2.3).
