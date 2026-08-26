@@ -1,6 +1,7 @@
 import pandas as pd
 
-from web_app.app.chart import METRIC_COLUMNS, build_subscore_figure
+from web_app.app.chart import build_subscore_figure
+from web_app.app.database.data_models import METRIC_COLUMNS
 
 
 def _df(ips):

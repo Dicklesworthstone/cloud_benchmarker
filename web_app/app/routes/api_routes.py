@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 
 from web_app.app.chart import generate_benchmark_charts
 from web_app.app.database.data_models import (
+    METRIC_COLUMNS,
     HistoricalOverallNormalizedScoresResponse,
     HistoricalRawBenchmarkSubscoresResponse,
-    METRIC_COLUMNS,
     OverallNormalizedScore,
     RawBenchmarkSubscores,
 )
@@ -113,9 +113,9 @@ def get_benchmark_historical_csv(db: Session = Depends(get_db)):
             "datetime": entry.datetime,
             "hostname": entry.hostname,
             "IP_address": entry.IP_address,
-            **{metric: getattr(entry, metric) for metric in RAW_METRIC_COLUMNS},
+            **{metric: getattr(entry, metric) for metric in METRIC_COLUMNS},
         } for entry in raw_data],
-        columns=["datetime", "hostname", "IP_address", *RAW_METRIC_COLUMNS],
+        columns=["datetime", "hostname", "IP_address", *METRIC_COLUMNS],
     )
     overall_df = pd.DataFrame(
         [{
