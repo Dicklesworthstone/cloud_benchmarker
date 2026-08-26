@@ -6,3 +6,13 @@ line-length = 120
 # E501 (line length) stays ignored per project convention.
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
+
+[tool.mypy]
+explicit_package_bases = true
+mypy_path = "."
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Third-party modules without stubs or py.typed markers.
+module = ["decouple", "decouple.*", "pandas", "pandas.*", "plotly", "plotly.*"]
+ignore_missing_imports = true

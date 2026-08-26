@@ -23,6 +23,12 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 - Replaced the deprecated top-level ruff setting with an explicit `[tool.ruff.lint]` policy (`E/F/W/I`, `E501` still ignored) so lint results are deterministic regardless of machine-local ruff configuration; import ordering normalized across the codebase via `ruff --fix`.
 
+### Static Analysis Adoption (mypy + bandit)
+
+- **Migrated `data_models.py` to SQLAlchemy 2.0's `class Base(DeclarativeBase)` style** -- the recommended modern form, and it makes the models fully transparent to static type checkers (`mypy` now passes clean on all 8 source files under mypy 2.3).
+- Configured `[tool.mypy]` in `pyproject.toml` (explicit package bases for the namespace-package layout; per-module import overrides for `decouple`/`pandas`/`plotly`, which ship no stubs).
+- **Added a static-analysis step to CI**: `mypy` over the app and scoring script, plus `bandit` over `web_app` (skipping B404/B603/B607 -- the scheduler deliberately launches `ansible-playbook` from PATH with list argv and no shell). Both pass clean; `mypy` and `bandit` added to `requirements-dev.txt`.
+
 ### Coverage-Driven Consistency Fix
 
 - **Fixed inconsistent degradation in the scheduler**: when raw results existed but no overall scores file had ever been produced, `job()` skipped ingestion entirely -- permanently losing that run's raw subscores, since the next run overwrites the combined results file. Raw data now always ingests when present; overall scores merge best-effort (fresh file, stale file, or none), matching the stale-file path's behavior. Regression-tested; suite grown to 36 tests with new coverage of the chart composition paths (raw-only / overall-only), the overall endpoint's time filter, and the first-boot playbook branch.

@@ -3,9 +3,11 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Column, DateTime, Float, Integer, String, UniqueConstraint
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """SQLAlchemy 2.0-style declarative base (typed, mypy-friendly)."""
 
 class RawBenchmarkSubscores(Base):
     __tablename__ = 'raw_benchmark_subscores'
