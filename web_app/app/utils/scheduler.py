@@ -194,10 +194,14 @@ def run_job_safely():
 
 def should_run_job(file_paths):
     now = datetime.now()
+    # Staleness threshold is half the configured interval: at the default
+    # 360 minutes this is the historical 3 hours, while shorter intervals
+    # take effect instead of being silently overridden by a fixed constant.
+    threshold = timedelta(minutes=max(1, PLAYBOOK_RUN_INTERVAL_IN_MINUTES // 2))
     for file_path in file_paths:
         try:
             modified_time = datetime.fromtimestamp(os.path.getmtime(file_path))
-            if now - modified_time > timedelta(hours=3):
+            if now - modified_time > threshold:
                 return True
         except FileNotFoundError:
             logger.warning(f"File {file_path} not found.")

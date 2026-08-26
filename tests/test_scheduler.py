@@ -242,3 +242,46 @@ def test_job_skips_ingestion_when_combined_file_empty(clean_db, monkeypatch, tmp
     scheduler.job()
 
     assert clean_db.query(RawBenchmarkSubscores).count() == 0
+
+
+def test_staleness_threshold_follows_configured_interval(monkeypatch, tmp_path):
+    # Regression: a hardcoded 3-hour threshold silently overrode any shorter
+    # configured interval -- PLAYBOOK_RUN_INTERVAL_IN_MINUTES=60 never ran
+    # more often than every ~3 hours.
+    import os
+    import time
+
+    from web_app.app.utils import scheduler
+    from web_app.app.utils.scheduler import should_run_job
+
+    results = tmp_path / "combined_cloud_benchmarker_results.json"
+    results.write_text("{}")
+
+    monkeypatch.setattr(scheduler, "PLAYBOOK_RUN_INTERVAL_IN_MINUTES", 60)
+    forty_five_min_ago = time.time() - 45 * 60
+    os.utime(results, (forty_five_min_ago, forty_five_min_ago))
+    assert should_run_job([str(results)]) is True  # 45 min > 60//2 = 30 min
+
+    twenty_min_ago = time.time() - 20 * 60
+    os.utime(results, (twenty_min_ago, twenty_min_ago))
+    assert should_run_job([str(results)]) is False  # 20 min < 30 min
+
+
+def test_default_interval_keeps_historical_three_hour_threshold(monkeypatch, tmp_path):
+    import os
+    import time
+
+    from web_app.app.utils import scheduler
+    from web_app.app.utils.scheduler import should_run_job
+
+    results = tmp_path / "combined_cloud_benchmarker_results.json"
+    results.write_text("{}")
+    monkeypatch.setattr(scheduler, "PLAYBOOK_RUN_INTERVAL_IN_MINUTES", 360)
+
+    two_hours_ago = time.time() - 2 * 3600
+    os.utime(results, (two_hours_ago, two_hours_ago))
+    assert should_run_job([str(results)]) is False  # 2 h < 3 h
+
+    four_hours_ago = time.time() - 4 * 3600
+    os.utime(results, (four_hours_ago, four_hours_ago))
+    assert should_run_job([str(results)]) is True  # 4 h > 3 h
