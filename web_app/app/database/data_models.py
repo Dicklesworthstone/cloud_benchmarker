@@ -9,6 +9,21 @@ from sqlalchemy.orm import DeclarativeBase
 class Base(DeclarativeBase):
     """SQLAlchemy 2.0-style declarative base (typed, mypy-friendly)."""
 
+# Column names below are an EXTERNAL CONTRACT, not just schema: the Ansible
+# playbook emits JSON with these exact keys, the scoring script weights
+# reference them, and chart/CSV rendering iterate METRIC_COLUMNS. Renaming a
+# column requires updating benchmark-playbook.yml and
+# script_to_generate_overall_benchmark_scores_from_subscores.py in lockstep.
+METRIC_COLUMNS = [
+    "cpu_speed_test__events_per_second",
+    "fileio_test__reads_per_second",
+    "memory_speed_test__MiB_transferred",
+    "mutex_test__avg_latency",
+    "threads_test__avg_latency",
+]
+
+
+
 class RawBenchmarkSubscores(Base):
     __tablename__ = 'raw_benchmark_subscores'
     id = Column(Integer, primary_key=True, autoincrement=True)
