@@ -45,6 +45,14 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
+### Code Quality
+
+```bash
+ruff check .
+mypy web_app/app script_to_generate_overall_benchmark_scores_from_subscores.py
+bandit -r web_app -q --skip B404,B603,B607
+```
+
 
 ## Swagger:
 
