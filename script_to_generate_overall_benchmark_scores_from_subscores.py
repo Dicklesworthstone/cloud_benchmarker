@@ -35,6 +35,11 @@ def parse_combined_results(content):
     The current playbook emits strict JSON (quoted keys, enclosing braces).
     Older playbook versions emitted quasi-JSON: unquoted host keys and no
     enclosing braces, e.g. ``hostA: {"metric": 1},hostB: {...}``.
+
+    This parser intentionally duplicates the one in
+    ``web_app/app/utils/scheduler.py``: the playbook copies this script to a
+    standalone /tmp location and runs it with the system interpreter, where
+    the web_app package is not importable.
     """
     content = content.strip()
     if not content:
