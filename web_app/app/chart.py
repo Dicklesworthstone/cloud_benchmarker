@@ -7,21 +7,17 @@ from decouple import config
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
-from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+from web_app.app.database.data_models import (
+    METRIC_COLUMNS,
+    OverallNormalizedScore,
+    RawBenchmarkSubscores,
+)
 from web_app.app.logger_config import setup_logger
 
 warnings.filterwarnings('ignore', 'The behavior of DatetimeProperties.to_pydatetime is deprecated')
 
 logger = setup_logger()
 MAX_DATA_POINTS_FOR_CHART = config("MAX_DATA_POINTS_FOR_CHART", cast=int)
-
-METRIC_COLUMNS = [
-    'cpu_speed_test__events_per_second',
-    'fileio_test__reads_per_second',
-    'memory_speed_test__MiB_transferred',
-    'mutex_test__avg_latency',
-    'threads_test__avg_latency',
-]
 
 NO_DATA_HTML = '''
 <html>

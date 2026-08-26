@@ -12,6 +12,7 @@ from web_app.app.chart import generate_benchmark_charts
 from web_app.app.database.data_models import (
     HistoricalOverallNormalizedScoresResponse,
     HistoricalRawBenchmarkSubscoresResponse,
+    METRIC_COLUMNS,
     OverallNormalizedScore,
     RawBenchmarkSubscores,
 )
@@ -21,14 +22,6 @@ from web_app.app.logger_config import setup_logger
 logger = setup_logger()
 
 router = APIRouter()
-
-RAW_METRIC_COLUMNS = [
-    "cpu_speed_test__events_per_second",
-    "fileio_test__reads_per_second",
-    "memory_speed_test__MiB_transferred",
-    "mutex_test__avg_latency",
-    "threads_test__avg_latency",
-]
 
 
 class TimePeriod(str, Enum):
