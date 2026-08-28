@@ -186,11 +186,14 @@ def job() -> None:
     json_files = glob.glob(f'{NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH}/*.json')
     overall_data = {}
     if json_files:
-        latest_overall_file = max(json_files, key=os.path.getctime)
+        latest_overall_file = max(json_files, key=os.path.getmtime)
         # The scoring script runs after the combine stage, so a file older
         # than the combined results belongs to a PREVIOUS run (this run's
         # scoring step failed). Attaching it would mislabel stale scores.
-        if os.path.getctime(latest_overall_file) >= datetime_from_file.timestamp():
+        # Both sides use mtime: Linux ctime is inode-change time, so any
+        # metadata touch (chmod, chown, backup tool) would make a stale
+        # file look fresh.
+        if os.path.getmtime(latest_overall_file) >= os.path.getmtime(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH):
             logger.info(f"Reading overall data from JSON file at {latest_overall_file}.")
             with open(latest_overall_file) as f:
                 overall_data = json.load(f)
