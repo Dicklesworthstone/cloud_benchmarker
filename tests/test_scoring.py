@@ -58,13 +58,31 @@ def test_latency_only_difference_ranks_lower_latency_first():
 
 def test_single_host_scores_neutral_not_perfect():
     scores = scoring.calculate_overall_performance({"lonely": HOST_A})
-    assert scores["lonely"] == pytest.approx(50.0)
+    # Exact, not approx: neutral 50 is a documented contract value.
+    assert scores["lonely"] == 50.0
+
+
+def test_single_host_custom_weights_still_exactly_neutral():
+    # Regression (from the localhost E2E run): with custom weights the
+    # normalized weights sum to 1 only up to float rounding, and the
+    # playbook's real output showed a single host at 49.99999999999999
+    # instead of the documented neutral 50.
+    weights = {
+        "cpu_speed_test__events_per_second": 2.0,
+        "fileio_test__reads_per_second": 1.0,
+        "memory_speed_test__MiB_transferred": 2.0,
+        "mutex_test__avg_latency": 0.5,
+        "threads_test__avg_latency": 0.5,
+    }
+    scores = scoring.calculate_overall_performance(
+        {"lonely": HOST_A}, weighting="custom", custom_weights=weights)
+    assert scores["lonely"] == 50.0
 
 
 def test_identical_hosts_score_neutral():
     scores = scoring.calculate_overall_performance({"x": HOST_A, "y": dict(HOST_A)})
-    assert scores["x"] == pytest.approx(50.0)
-    assert scores["y"] == pytest.approx(50.0)
+    assert scores["x"] == 50.0
+    assert scores["y"] == 50.0
 
 def test_custom_weights_are_normalized_and_missing_weight_rejected():
     weights = {
@@ -205,15 +223,11 @@ def test_main_cli_path_writes_sorted_output_file(tmp_path):
     assert len(output_files) == 1, output_files
     scores = json.loads(output_files[0].read_text())
     # fast_host is strictly superior on every metric (latencies included),
-    # so it must rank first. Under custom weights the score carries
-    # unavoidable float-accumulation dust (the weights are normalized by
-    # division, so they sum to 1 only up to rounding); exact 100.0 is only
-    # guaranteed under equal weighting, which the equal-weighting test
-    # above pins down.
+    # so it must rank first with EXACTLY 100: the scorer rounds away the
+    # weight-normalization float dust (found producing
+    # 49.99999999999999 for a neutral host in real playbook output).
     assert list(scores)[0] == "fast_host"
-    assert scores["fast_host"] == pytest.approx(100.0)
-    ranked = list(scores.values())
-    assert ranked == sorted(ranked, reverse=True)
+    assert scores["fast_host"] == 100.0
 
 
 def test_main_cli_exits_nonzero_when_no_data(tmp_path):

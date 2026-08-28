@@ -118,11 +118,16 @@ def calculate_overall_performance(data: Mapping[str, Any], weighting: str = "equ
             result[host] = sum(normalized_list) / len(normalized_list)
 
     # Every component lies in [0, 100] and the weights sum to 1, so the
-    # true score is always in range; clamping only removes float-accumulation
-    # dust (e.g. 99.99999999999999 for a strictly superior host under custom
-    # weights) so the documented "best host scores exactly 100" holds.
-    clamped = {host: min(100.0, max(0.0, value)) for host, value in result.items()}
-    return {k: v for k, v in sorted(clamped.items(), key=lambda item: item[1], reverse=True)}
+    # true score is always in range. Two pieces of float hygiene make the
+    # documented contract values exact: clamping removes range exceedance,
+    # and rounding to 10 decimals removes in-range accumulation dust from
+    # weight normalization (the weights sum to 1 only up to rounding, so a
+    # neutral-tie host scored 49.99999999999999 in real playbook output
+    # instead of the promised 50). Meaningful distinctions live far above
+    # 1e-10 on a 0-100 scale.
+    clamped = (min(100.0, max(0.0, value)) for value in result.values())
+    scored = {host: round(value, 10) for host, value in zip(result, clamped)}
+    return {k: v for k, v in sorted(scored.items(), key=lambda item: item[1], reverse=True)}
 
 
 if __name__ == "__main__":
