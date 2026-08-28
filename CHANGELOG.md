@@ -8,6 +8,41 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 ---
 
+## 2026-08-28 -- Path Independence, Ingest Isolation, and Type Coverage
+
+### Runtime Paths Are Now Fully CWD-Independent (`logger_config.py`, `database/init_db.py`, `utils/scheduler.py`)
+
+- **Logs no longer depend on the launch directory**: `cloud_benchmarker.log` and `old_logs/` were resolved against the process CWD, so a systemd launch from `/` scattered logs there. Both are now anchored to the repository root (`LOG_FILE_PATH` / `OLD_LOGS_DIR`), extending the earlier playbook-anchoring doctrine. The rotation namer/rotator tests were reworked to monkeypatch the anchored directory instead of relying on CWD.
+- **Relative SQLite URLs are anchored**: the default `sqlite:///cloud_benchmarker.sqlite` resolved against the CWD, silently creating a second empty database when launched elsewhere. `init_db` now rewrites relative `sqlite:///` URLs (plain and dialect-prefixed) against the repository root, preserving query suffixes and leaving absolute paths, `:memory:`, `file:` URIs, and non-SQLite dialects untouched. Every variant is unit-tested.
+- **Inventory parsing follows the playbook's anchoring**: `job()` handed the raw -- possibly relative -- decouple value to `parse_inventory` while `run_playbook` used the anchored absolute path, so a non-repo launch made benchmark runs succeed while inventory parsing failed with `FileNotFoundError` and retried forever. Regression-tested from a foreign CWD.
+
+### Ingest Isolation (`utils/scheduler.py`)
+
+- **One malformed host can no longer lose the batch**: unexpected keys in a host's raw subscores (playbook JSON drift) raised inside `ingest_data` and aborted ingestion for every host; the combined results file is overwritten by the next run, so the data was gone. Each host is now validated before mutation: a non-object payload or unknown keys skip that host only (logged with the offending keys), and a non-numeric overall score drops just that host's overall row while its raw subscores still land. The single per-run commit is preserved; genuinely environmental database errors still fail the batch loudly.
+
+### Time Handling (`utils/scheduler.py`, `routes/api_routes.py`)
+
+- **Staleness math uses absolute epoch seconds**: `should_run_job` subtracted naive local datetimes, so a DST transition between a file's mtime and the check could distort measured staleness by up to an hour. The comparison is now `time.time() - getmtime` against a threshold in seconds.
+- **The local-naive timestamp convention is documented at both ends**: stored run timestamps are the results file's local mtime, and API period cutoffs intentionally match. A UTC migration would require converting every existing row (SQLite DateTime columns drop tzinfo on round-trip) and is deliberately not attempted one-sided.
+
+### Type Coverage (`utils/scheduler.py`, `routes/api_routes.py`, `chart.py`, scoring script)
+
+- All previously untyped public functions are annotated -- the eight scheduler functions, the four API route handlers (typed to their response-model contracts via `cast` over the ORM rows FastAPI serializes), both chart builders, and both scoring-script entry points -- with no loosening of the mypy configuration. `run_playbook` now raises a loud `RuntimeError` on the impossible `stdout=None` case instead of silently skipping the output drain.
+
+### Startup and Subprocess Test Coverage (`tests/test_app_boot.py`)
+
+- Three new tests boot the REAL application: the lifespan wiring through `TestClient` (init_db runs, the dashboard route serves the static page, the scheduler daemon thread starts), `run_playbook` against an executable stub on PATH (pins the repo-anchored argv contract, streams >64 KB on both pipes to prove the merged-output drain cannot deadlock, runs from a foreign CWD), and `start_scheduler`'s registration (guarded wrapper, interval clamp, one polling thread, inline first tick). Coverage: `main.py` 0% -> 100%, `scheduler.py` 87% -> 95%, project total 98%. Suite now 49 tests.
+
+### Documentation and Configuration
+
+- README's scheduler section no longer claims a hardcoded "older than 3 hours" check; it documents the half-interval threshold. The Configuration section now lists every `.env` knob in a table (`SQLALCHEMY_ENGINE_CONNECTION_STRING`, `PLAYBOOK_RUN_INTERVAL_IN_MINUTES`, `ANSIBLE_INVENTORY_FILE_PATH`, `MAX_DATA_POINTS_FOR_CHART`), and a [`.env.example`](.env.example) template ships with the repository.
+
+### Tracker
+
+- Work was tracked in a newly initialized beads tracker (`.beads/`) as `cloud_benchmarker-pz9`, `-m8o`, `-3v2`, `-m2i`, `-f3k`, and `-uu7`, all closed with cited evidence.
+
+---
+
 ## 2026-08-23 (2) -- Hardening, CI, and Lint
 
 ### Scheduler (`web_app/app/utils/scheduler.py`)

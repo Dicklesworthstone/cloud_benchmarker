@@ -32,7 +32,7 @@ Now simply edit the Ansible inventory file (`my_ansible_inventory_file.ini`) to 
 
 `uvicorn web_app.app.main:app --host 0.0.0.0 --port 9999`
 
-Note that the first time you run it, it will immediately create the required directories and start the benchmarking playbook. Thereafter, it will do another benchmark every 6 hours (you can set the schedule to any interval by editing the value in the `.env` file).
+Note that the first time you run it, it will immediately create the required directories and start the benchmarking playbook. Thereafter, it will do another benchmark every 6 hours (you can set the schedule to any interval by editing the value in the `.env` file — see [`.env.example`](.env.example) for all available knobs).
 
 Two prerequisites for the target machines: the playbook installs packages with `become: true`, so the Ansible user needs **passwordless sudo** (or configure `ansible_become_pass`), and the example inventory sets `StrictHostKeyChecking=accept-new` so first contact with a new host succeeds instead of failing SSH host-key verification.
 
@@ -106,7 +106,7 @@ Interactive API documentation is served at [`/docs`](http://localhost:9999/docs)
 
 ## Scheduler
 
-The scheduler is set up to run the Ansible playbook at intervals defined by `PLAYBOOK_RUN_INTERVAL_IN_MINUTES`. The scheduler checks if the output JSON files are older than 3 hours before initiating another benchmark run. This ensures that you don't run unnecessary benchmarks if the data is relatively fresh. After running the playbook, the scheduler ingests the new data into the database.
+The scheduler is set up to run the Ansible playbook at intervals defined by `PLAYBOOK_RUN_INTERVAL_IN_MINUTES`. Before each run it checks whether the output JSON files are stale, using a threshold of **half the configured interval** (at the default 360 minutes this is the historical 3 hours; shorter intervals take effect immediately rather than being overridden by a fixed constant). This ensures that you don't run unnecessary benchmarks if the data is relatively fresh. After running the playbook, the scheduler ingests the new data into the database.
 
 ## Deep Dive: Underlying Playbook and Score Calculation
 
@@ -188,7 +188,17 @@ The provided Python script is designed to generate interactive charts visualizin
 2. **Create Figure**: A Plotly Express line chart is created, which plots the overall normalized score over time, categorized by hostname.
 
 ## Configuration
-To modify the `PLAYBOOK_RUN_INTERVAL_IN_MINUTES` in your setup, you'll need to do the following:
+
+All knobs live in a `.env` file in the repository root (see [`.env.example`](.env.example) for a template — copy it to `.env` and adjust):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SQLALCHEMY_ENGINE_CONNECTION_STRING` | `sqlite:///cloud_benchmarker.sqlite` | SQLAlchemy database URL. A relative SQLite path is anchored to the repository root, so the same database file is used no matter which directory you launch from. |
+| `PLAYBOOK_RUN_INTERVAL_IN_MINUTES` | `360` | How often the benchmarking playbook runs. |
+| `ANSIBLE_INVENTORY_FILE_PATH` | `my_ansible_inventory_file.ini` | Ansible inventory path; relative paths are resolved against the repository root. |
+| `MAX_DATA_POINTS_FOR_CHART` | `1000` | Maximum number of recent rows plotted per table in the charts dashboard. |
+
+To change the benchmark interval:
 
 1. Open the `.env` file in a text editor.
 2. Locate the line `PLAYBOOK_RUN_INTERVAL_IN_MINUTES=360`.
