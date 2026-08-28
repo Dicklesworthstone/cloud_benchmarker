@@ -318,3 +318,43 @@ def test_job_parses_inventory_via_repo_anchored_absolute_path(monkeypatch, tmp_p
 
     assert received == [scheduler.ANSIBLE_INVENTORY_ABSOLUTE_PATH]
     assert Path(received[0]).is_absolute()
+
+
+def test_ingest_data_isolates_malformed_host(clean_db):
+    # Regression: one malformed host entry (unexpected keys, e.g. after a
+    # playbook JSON drift) used to raise inside ingest_data and lose the
+    # ENTIRE batch; good hosts must still land.
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.utils.scheduler import ingest_data
+
+    now = datetime(2026, 8, 28, 12, 0, 0)
+    raw_data = {
+        "hostA": dict(RAW_METRICS_HOST_A),
+        "hostBad": {"cpu_speed_test__events_per_second": 1.0, "totally_unknown_metric": 2.0},
+        "hostC": dict(RAW_METRICS_HOST_A),
+    }
+    overall_data = {"hostA": 90.0, "hostBad": 50.0, "hostC": 80.0}
+    host_to_ip = {"hostA": "1.2.3.4", "hostBad": "1.2.3.5", "hostC": "1.2.3.6"}
+
+    ingest_data(clean_db, raw_data, overall_data, now, host_to_ip)
+
+    hostnames = {r.hostname for r in clean_db.query(RawBenchmarkSubscores).all()}
+    assert hostnames == {"hostA", "hostC"}  # hostBad skipped whole
+    assert clean_db.query(OverallNormalizedScore).count() == 2
+
+
+def test_ingest_data_skips_only_non_numeric_overall_score(clean_db):
+    # A non-numeric overall value would fail at commit with InterfaceError
+    # and abort every host's ingestion; it must drop just that overall row.
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.utils.scheduler import ingest_data
+
+    now = datetime(2026, 8, 28, 12, 0, 0)
+    raw_data = {"hostA": dict(RAW_METRICS_HOST_A), "hostB": dict(RAW_METRICS_HOST_A)}
+    overall_data = {"hostA": {"nested": "dict"}, "hostB": 75.5}
+
+    ingest_data(clean_db, raw_data, overall_data, now, {"hostA": "1.2.3.4", "hostB": "1.2.3.5"})
+
+    assert clean_db.query(RawBenchmarkSubscores).count() == 2  # raw rows survive
+    scores = {r.hostname: r.overall_score for r in clean_db.query(OverallNormalizedScore).all()}
+    assert scores == {"hostB": 75.5}  # only hostB's overall row landed

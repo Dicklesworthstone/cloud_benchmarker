@@ -85,7 +85,29 @@ def load_combined_results(file_path):
 
 
 def ingest_data(db: Session, raw_data, overall_data, datetime_from_file, host_to_ip):
+    """Upsert one run's per-host scores in a single transaction.
+
+    A malformed host entry must not lose every other host's data for that
+    run, so each host is validated against the model columns before any
+    mutation: a host with unrecognized raw keys is skipped whole, and a
+    non-numeric overall score skips only that host's overall row.
+    """
+    raw_columns = set(RawBenchmarkSubscores.__table__.columns.keys())
     for hostname, scores in raw_data.items():
+        if not isinstance(scores, dict):
+            logger.error(
+                "Host %r: raw subscores are %s, expected an object; skipping host.",
+                hostname, type(scores).__name__,
+            )
+            continue
+        unknown_keys = set(scores) - raw_columns
+        if unknown_keys:
+            logger.error(
+                "Host %r: unrecognized raw subscore keys %s; skipping host "
+                "(the playbook JSON and RawBenchmarkSubscores columns have drifted).",
+                hostname, sorted(unknown_keys),
+            )
+            continue
         conditions = {
             "datetime": datetime_from_file,
             "hostname": hostname,
@@ -101,11 +123,19 @@ def ingest_data(db: Session, raw_data, overall_data, datetime_from_file, host_to
             db.add(raw_entry)
         # For overall normalized scores
         if hostname in overall_data:
+            overall_score = overall_data[hostname]
+            if isinstance(overall_score, bool) or not isinstance(overall_score, (int, float)):
+                logger.error(
+                    "Host %r: overall score %r is not a number; ingesting raw "
+                    "subscores without the overall score.",
+                    hostname, overall_score,
+                )
+                continue
             overall_record = db.query(OverallNormalizedScore).filter_by(**conditions).first()
             if overall_record:
-                overall_record.overall_score = overall_data[hostname]
+                overall_record.overall_score = overall_score
             else:
-                overall_entry = OverallNormalizedScore(**conditions, overall_score=overall_data[hostname])
+                overall_entry = OverallNormalizedScore(**conditions, overall_score=overall_score)
                 db.add(overall_entry)
     db.commit()
 
