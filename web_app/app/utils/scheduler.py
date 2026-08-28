@@ -4,7 +4,7 @@ import os
 import re
 import subprocess
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from threading import Lock, Thread
 
@@ -166,6 +166,11 @@ def job():
                               # a failed run retries on the next scheduled tick.
     else:
         logger.info("Skipping ansible playbook run since the benchmark results file is not old enough.")
+    # Storage convention: benchmark timestamps are local-time naive
+    # datetimes (from the results file's mtime). All consumers (API period
+    # cutoffs, CSV export) share this convention, so converting to UTC here
+    # would require a coordinated migration of existing DB rows for no
+    # practical benefit in a single-host operator tool.
     datetime_from_file = datetime.fromtimestamp(os.path.getmtime(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH))
     raw_data = load_combined_results(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH)
     if not raw_data:
@@ -222,15 +227,17 @@ def run_job_safely():
 
 
 def should_run_job(file_paths):
-    now = datetime.now()
     # Staleness threshold is half the configured interval: at the default
     # 360 minutes this is the historical 3 hours, while shorter intervals
     # take effect instead of being silently overridden by a fixed constant.
-    threshold = timedelta(minutes=max(1, PLAYBOOK_RUN_INTERVAL_IN_MINUTES // 2))
+    threshold_seconds = max(1, PLAYBOOK_RUN_INTERVAL_IN_MINUTES // 2) * 60
     for file_path in file_paths:
         try:
-            modified_time = datetime.fromtimestamp(os.path.getmtime(file_path))
-            if now - modified_time > threshold:
+            # Absolute epoch seconds, not naive datetime subtraction: local
+            # wall-clock math across a DST transition can distort the
+            # measured staleness by up to an hour.
+            age_seconds = time.time() - os.path.getmtime(file_path)
+            if age_seconds > threshold_seconds:
                 return True
         except FileNotFoundError:
             logger.warning(f"File {file_path} not found.")

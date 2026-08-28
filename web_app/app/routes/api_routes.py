@@ -36,6 +36,11 @@ PERIOD_DAYS = {
     TimePeriod.last_year: 365,
 }
 
+# Cutoffs use local naive datetimes to match the scheduler's storage
+# convention (run timestamps are the results file's local mtime). Changing
+# one side without migrating the stored rows would silently shift every
+# filtered window.
+
 
 @router.get("/data/raw/",
             summary="Get Raw Data",
