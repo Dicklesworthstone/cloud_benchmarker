@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from web_app.app.database.init_db import init_db
+from web_app.app.database.init_db import engine, init_db
 from web_app.app.logger_config import setup_logger
 from web_app.app.routes.api_routes import router as api_router
 from web_app.app.utils.scheduler import start_scheduler
@@ -29,6 +29,9 @@ async def lifespan(app: FastAPI):
     scheduler_thread.start()
     logger.info("Application startup completed.")
     yield
+    # Release pooled database connections promptly on shutdown instead of
+    # waiting for interpreter garbage collection.
+    engine.dispose()
     logger.info("Application shutdown completed.")
 
 

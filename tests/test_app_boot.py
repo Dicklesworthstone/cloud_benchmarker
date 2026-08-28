@@ -17,7 +17,16 @@ def test_real_app_lifespan_boots_dashboard_and_shuts_down(monkeypatch):
 
     from web_app.app import main as main_module
 
+    class FakeEngine:
+        def __init__(self):
+            self.disposed = False
+
+        def dispose(self):
+            self.disposed = True
+
     boot = {"init": 0, "scheduler": 0}
+    fake_engine = FakeEngine()
+    monkeypatch.setattr(main_module, "engine", fake_engine)
     monkeypatch.setattr(main_module, "init_db", lambda: boot.__setitem__("init", boot["init"] + 1))
 
     def fake_start_scheduler():
@@ -36,6 +45,7 @@ def test_real_app_lifespan_boots_dashboard_and_shuts_down(monkeypatch):
             break
         time_module.sleep(0.02)
     assert boot["scheduler"] == 1
+    assert fake_engine.disposed  # lifespan teardown released the DB pool
 
 
 def test_run_playbook_drains_merged_output_without_deadlock(tmp_path, monkeypatch):
