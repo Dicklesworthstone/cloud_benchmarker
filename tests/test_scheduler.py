@@ -153,6 +153,43 @@ def test_should_run_job_staleness_semantics(tmp_path):
     assert should_run_job([str(tmp_path / "missing.json")]) is False
 
 
+
+def test_overall_file_freshness_uses_mtime_not_ctime(clean_db, tmp_path, monkeypatch):
+    # Regression: the freshness check compared the overall file's ctime
+    # (inode-change time on Linux) against the combined file's mtime. Any
+    # metadata touch -- chmod, chown, a backup or sync tool -- bumps ctime
+    # to NOW while mtime stays old, so a STALE overall file from a previous
+    # run could pass as current and get mislabeled onto this run's rows.
+    import json
+    import os
+    import time
+
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.utils import scheduler
+
+    overall_dir = tmp_path / "benchmark_result_output_files"
+    overall_dir.mkdir()
+    stale_file = overall_dir / "combined_cloud_benchmarker_results__overall_score_sorted__stale.json"
+    stale_file.write_text(json.dumps({"hostA": 1.0}))
+    old = time.time() - 7200
+    os.utime(stale_file, (old, old))
+    os.chmod(stale_file, 0o664)  # bumps ctime to now; mtime untouched
+
+    combined = tmp_path / "combined_cloud_benchmarker_results.json"
+    combined.write_text(json.dumps({"hostA": dict(RAW_METRICS_HOST_A)}))
+    monkeypatch.setattr(scheduler, "initial_setup", False)
+    monkeypatch.setattr(scheduler, "NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH", str(overall_dir) + "/")
+    monkeypatch.setattr(scheduler, "COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH", str(combined))
+    monkeypatch.setattr(scheduler, "should_run_job", lambda files: False)
+    monkeypatch.setattr(scheduler, "parse_inventory", lambda path: {"hostA": "1.2.3.4"})
+
+    scheduler.job()
+
+    assert clean_db.query(RawBenchmarkSubscores).count() == 1
+    # The stale overall scores must NOT attach even though ctime is fresh.
+    assert clean_db.query(OverallNormalizedScore).count() == 0
+
+
 def test_run_job_safely_skips_when_previous_tick_still_running(monkeypatch):
     # A long playbook must never stack a second concurrent benchmark run.
     from web_app.app.utils import scheduler
