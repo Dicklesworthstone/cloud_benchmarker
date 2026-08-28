@@ -41,6 +41,7 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 - Work was tracked in a newly initialized beads tracker (`.beads/`) as `cloud_benchmarker-pz9`, `-m8o`, `-3v2`, `-m2i`, `-f3k`, and `-uu7`, all closed with cited evidence.
 - **The full pipeline was re-verified end-to-end against localhost** (scratch inventory, `HOME` redirected to a scratch directory so operator state was untouched): the real playbook ran all five sysbench tests, the combine stage and scoring script produced valid artifacts, the real `scheduler.job()` ingested them into a throwaway database through the unmodified default wiring, and all four API endpoints served the fresh data. The run immediately paid for itself: it exposed the neutral-50 float dust fixed above (the unit suite's `pytest.approx` assertions had been masking it), which is now proven exact (`50.0`) in regenerated playbook output.
+- **The multi-host mechanics were verified live with a two-host run** (two `connection=local` inventory entries, scratch `HOME`): the combine stage joined both per-host fetch directories, scoring emitted two exact neutral-`50.0` entries (the float-dust fix holds for N hosts), one `job()` tick landed two raw rows sharing a run timestamp plus two overall rows, the historical CSV paired each host with its own score, and the charts rendered multi-host traces.
 
 ---
 
@@ -291,6 +292,57 @@ Introduced in the first commit:
 
 | Date | Hash | Summary |
 |------|------|---------|
+| 2026-08-28 | [`3b2fe4b`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/3b2fe4b7404f9edf0e1386a1f030f632ab221b44) | test(coverage): close the last gaps -- 100% statement coverage |
+| 2026-08-28 | [`796fa97`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/796fa9773879ea1af7a8d5b06ac4b7adbbf9df24) | chore(config): stop tracking .env; document cp from .env.example |
+| 2026-08-28 | [`448cbaa`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/448cbaa972c459f360ce6238097e4060b5d28798) | docs(changelog): record the localhost end-to-end pipeline verification |
+| 2026-08-28 | [`d023ebd`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/d023ebdba58e4cbf69596c8876b7a23f1103d343) | fix(scoring): round away weight-normalization dust so contract values are exact |
+| 2026-08-28 | [`6f8ed80`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/6f8ed80837c16dd7a30974589eaa31c8dbb36dba) | chore(beads): file E2E localhost pipeline verification (evc) |
+| 2026-08-28 | [`7560acf`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/7560acf528e2ee26506741e3fb9ea7fdf6c6f718) | fix(app): dispose the SQLAlchemy engine on lifespan shutdown |
+| 2026-08-28 | [`de0cb3c`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/de0cb3c74b35106a4e22d8b0a6c6b87cb1ee25af) | test(scoring): exercise the __main__ CLI path; clamp scores to [0, 100] |
+| 2026-08-28 | [`3627f47`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/3627f47440945be25919f700a778382534272c6e) | fix(scoring): clamp overall scores to [0, 100] after weighting |
+| 2026-08-28 | [`c5140b8`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/c5140b8918fa945a4be4bb25412739d76f66a0ed) | test(scoring): drive the __main__ CLI via a real subprocess |
+| 2026-08-28 | [`96bb6e3`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/96bb6e3e138c5b896a111121c3eea0770c8a8e67) | chore(beads): mark cloud_benchmarker-vgn in progress |
+| 2026-08-28 | [`85d6a5e`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/85d6a5e209394bfd92474c85bb97c89eae99e2af) | fix(scheduler): judge overall-file freshness by mtime, not ctime |
+| 2026-08-28 | [`7fe409c`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/7fe409c853a85c25fce9e6802df3252f9555d596) | fix(scheduler): compare overall-file freshness with mtime, not ctime |
+| 2026-08-28 | [`2a655e3`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/2a655e33d94811ef7dcb8c1b256ef8f8dac0f8b7) | chore(beads): file three follow-ups from the hardening round |
+| 2026-08-27 | [`5efeddb`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/5efeddb605222923773be359f603a947f9fc35d8) | docs: refresh README configuration truth, add .env.example, changelog the hardening round |
+| 2026-08-27 | [`26744f9`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/26744f947a6deabbb00b5f227875eb36fe10580d) | refactor(types): annotate all public functions across web_app and the scoring script |
+| 2026-08-27 | [`8b886ac`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/8b886ac062eef41e317a0df46c46b4c199f1bb7f) | test(app): boot the real lifespan, pin the playbook argv, cover the scheduler registration |
+| 2026-08-27 | [`ea2f25f`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/ea2f25f1388b8b1d073510798bc868d0b7841b88) | fix(scheduler): epoch-based staleness math; document the local-naive time convention |
+| 2026-08-27 | [`7b4309f`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/7b4309f9abffe39e1166f9d25cc488f9bc4a8770) | fix(scheduler): measure staleness in epoch seconds across DST |
+| 2026-08-27 | [`6492517`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/6492517cda5c83db3f559f8cd258d1f5915add3d) | fix(scheduler): isolate malformed hosts so one bad row cannot lose the batch |
+| 2026-08-27 | [`f77d824`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/f77d8240b0dbf8a720fafb15ed8c63c9d85f0d45) | fix(ingest): isolate malformed hosts so one bad row cannot lose the batch |
+| 2026-08-27 | [`560a3be`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/560a3be40dcea6d552358ab1cbf1333d98a01ea6) | chore(beads): mark cloud_benchmarker-m8o in progress |
+| 2026-08-27 | [`e3ccee2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/e3ccee2900d5210d3f2f0baa0bbbec5b7fbf6223) | fix(paths): anchor logs, SQLite, and inventory parsing to the repo root |
+| 2026-08-26 | [`8689ac5`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/8689ac54a7d7a993b5d5934018f7018e50e11c64) | refactor: single source of truth for metric columns in data_models |
+| 2026-08-26 | [`39fe43b`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/39fe43bc3aaf42990bcb4f793577bcd26b07a050) | refactor(metrics): import canonical METRIC_COLUMNS in chart and api_routes |
+| 2026-08-26 | [`4f51a67`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4f51a67813764f450be8011f260fa38169732b9a) | feat(scoring): import METRIC_COLUMNS from data models in scoring script |
+| 2026-08-26 | [`0a44d02`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/0a44d025991fb58617a0d61b11e67d1546fc15ee) | docs(models): document METRIC_COLUMNS external schema contract |
+| 2026-08-26 | [`4e48ba9`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4e48ba94ead03522323371d7545459d0cccc1d1d) | docs: changelog entry for interval-derived staleness threshold |
+| 2026-08-26 | [`73a4f4e`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/73a4f4e3a5a02cd570d621d123359e403e6f6d77) | fix(scheduler): derive staleness threshold from configured interval |
+| 2026-08-25 | [`a396daf`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/a396daf59fb8e5a7ebfb271bd1f626c25c1ab281) | test: cover logger rotation namer/rotator and init_db; document code quality commands |
+| 2026-08-25 | [`ccea28c`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/ccea28c320458f7e108da34b929174b291081f45) | feat(ci): adopt mypy and bandit static analysis; modernize Base to DeclarativeBase |
+| 2026-08-25 | [`22b286c`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/22b286cfa0a6c7d7150f9be92129af00f9ccaf8d) | ci: bump actions/checkout to v5 and actions/setup-python to v6 |
+| 2026-08-25 | [`ef16f32`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/ef16f32ed90c1eb729920e26cad1cb3fe937ed8f) | feat(ansible,tests): configure accept-new SSH host checking and pytest session engine disposal |
+| 2026-08-25 | [`cb3419f`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/cb3419fdfea2ea38a3ae00721e922bbb90064a1d) | fix(scheduler): ingest raw subscores even when no overall file exists; close coverage gaps |
+| 2026-08-24 | [`fd508d0`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/fd508d01864e3c707031c1375a8ba5ffc2060e88) | docs: document single uvicorn worker constraint for scheduler isolation |
+| 2026-08-24 | [`8f58d18`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/8f58d18845992358a37a6ddb92897d458fd58aaf) | fix: anchor Ansible paths to repo root; run blocking endpoints in threadpool |
+| 2026-08-24 | [`4d0dcf5`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4d0dcf528082842b2b7488433b0182629e755a57) | feat(scheduler,api): anchor ansible paths to repo root and offload sync pandas chart generation |
+| 2026-08-24 | [`b33402a`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/b33402ac8e71a854b538d3fee1da7bdd3db4a2fe) | fix: reject non-object JSON in results parsers; pin parser/scorer contracts with seeded fuzz tests |
+| 2026-08-24 | [`47d44a2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/47d44a2f4b6fba7397812c85368f4176c538cad8) | fix: fresh-eyes audit -- exact chart dropdown matching, scheduler tick lock, tolerant scoring |
+| 2026-08-24 | [`d5a8964`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/d5a8964f086625fd9bf01039947ffb0f86cb6983) | test: cover should_run_job staleness semantics; docs: restore changelog subsections lost to working-tree reset |
+| 2026-08-24 | [`d292398`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/d2923981f7becdb5cc13c18f869478c98f89cba1) | test(scheduler): add test for should_run_job staleness semantics |
+| 2026-08-24 | [`96a4a39`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/96a4a390aad7bdfc6da775bdfb3a55393d793f9b) | fix(playbook): re-land FileIO modernization and ansible_user_dir dests wiped by working-tree reset |
+| 2026-08-24 | [`bb87a8a`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/bb87a8ac07c7f918067ce2195ccfa35ad381136f) | fix(api): preserve IP_address in degenerate CSV branch; restore regression test lost to working-tree reset |
+| 2026-08-24 | [`73c6b79`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/73c6b794403516b07d9cbafd810e7814f1309d65) | test(api,scheduler): update test suites for scheduler and api |
+| 2026-08-24 | [`9a2171f`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/9a2171f6f6d2bc177fd401d0c2f11ba3d755c20b) | fix(scheduler): reject stale overall scores predating combined benchmark results |
+| 2026-08-23 | [`d8bb04a`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/d8bb04a916e898a2d543e0b7f6ecdbbd98f47005) | docs: document hardening, CI, and test suite; make VS Code launch portable |
+| 2026-08-23 | [`637c1bf`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/637c1bfa8c007bc53914b2a706bcd9db809c3600) | test: add 16-test pytest suite, GitHub Actions CI, and dev requirements |
+| 2026-08-23 | [`f2cb5e8`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/f2cb5e82d4ba700dc80e86305694cb261f367344) | fix(scheduler): eliminate playbook pipe deadlock; make parse_inventory tolerant |
+| 2026-08-23 | [`a0d16a2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/a0d16a248700475582734e046ece7a8c5595662c) | refactor(web_app): normalize imports under explicit ruff policy; modernize to SQLAlchemy 2.x / Pydantic v2 |
+| 2026-08-23 | [`4f7de8a`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4f7de8adf24b7329e6ce05f6410157e823b83699) | feat(web_app): lifespan-based app shell, static dashboard at /, typed filters, no-data charts |
+| 2026-08-23 | [`07a811a`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/07a811ae2c8129618cb21805800b94f9fe17f3af) | fix(benchmark): strict-JSON combined results; portable home paths; tolerant results loader |
+| 2026-03-21 | [`e2f08fb`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/e2f08fb94a764dd1902b8a2274edcc885f931ab5) | docs: add comprehensive CHANGELOG.md documenting project history |
 | 2026-02-22 | [`0c1e58c`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/0c1e58c9c93b046c408362ea4c59a14dde583607) | docs: update README license references to MIT + OpenAI/Anthropic Rider |
 | 2026-02-22 | [`a8ee365`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/a8ee36557f9a6a9388acd79027cb1ead3f27a908) | chore: update license to MIT with OpenAI/Anthropic Rider |
 | 2026-02-21 | [`1d0f4a2`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/1d0f4a231d5d2df8286bfe880f082f198e0b4fd0) | chore: add GitHub social preview image (1280x640) |
