@@ -37,9 +37,10 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 - README's scheduler section no longer claims a hardcoded "older than 3 hours" check; it documents the half-interval threshold. The Configuration section now lists every `.env` knob in a table (`SQLALCHEMY_ENGINE_CONNECTION_STRING`, `PLAYBOOK_RUN_INTERVAL_IN_MINUTES`, `ANSIBLE_INVENTORY_FILE_PATH`, `MAX_DATA_POINTS_FOR_CHART`), and a [`.env.example`](.env.example) template ships with the repository.
 
-### Tracker
+### Tracker and Live Verification
 
 - Work was tracked in a newly initialized beads tracker (`.beads/`) as `cloud_benchmarker-pz9`, `-m8o`, `-3v2`, `-m2i`, `-f3k`, and `-uu7`, all closed with cited evidence.
+- **The full pipeline was re-verified end-to-end against localhost** (scratch inventory, `HOME` redirected to a scratch directory so operator state was untouched): the real playbook ran all five sysbench tests, the combine stage and scoring script produced valid artifacts, the real `scheduler.job()` ingested them into a throwaway database through the unmodified default wiring, and all four API endpoints served the fresh data. The run immediately paid for itself: it exposed the neutral-50 float dust fixed above (the unit suite's `pytest.approx` assertions had been masking it), which is now proven exact (`50.0`) in regenerated playbook output.
 
 ---
 
