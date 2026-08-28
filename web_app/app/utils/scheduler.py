@@ -143,7 +143,7 @@ def job():
         logger.warning("Combined results file contains no host data; skipping ingestion this tick.")
         return
     logger.info("Parsing inventory file.")
-    host_to_ip = parse_inventory(ANSIBLE_INVENTORY_FILE_PATH)
+    host_to_ip = parse_inventory(ANSIBLE_INVENTORY_ABSOLUTE_PATH)
     json_files = glob.glob(f'{NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH}/*.json')
     overall_data = {}
     if json_files:

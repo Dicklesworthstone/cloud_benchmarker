@@ -285,3 +285,36 @@ def test_default_interval_keeps_historical_three_hour_threshold(monkeypatch, tmp
     four_hours_ago = time.time() - 4 * 3600
     os.utime(results, (four_hours_ago, four_hours_ago))
     assert should_run_job([str(results)]) is True  # 4 h > 3 h
+
+
+def test_job_parses_inventory_via_repo_anchored_absolute_path(monkeypatch, tmp_path, clean_db):
+    # Regression: job() handed the raw (possibly relative) decouple value to
+    # parse_inventory, so launching the server from a non-repo CWD made
+    # playbook runs (which use the anchored path) succeed while inventory
+    # parsing failed with FileNotFoundError -- retrying forever.
+    import json
+    from pathlib import Path
+
+    from web_app.app.utils import scheduler
+
+    combined = tmp_path / "combined_cloud_benchmarker_results.json"
+    combined.write_text(json.dumps({"hostA": dict(RAW_METRICS_HOST_A)}))
+    empty_dir = tmp_path / "benchmark_result_output_files"
+    empty_dir.mkdir()
+    monkeypatch.setattr(scheduler, "initial_setup", False)
+    monkeypatch.setattr(scheduler, "COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH", str(combined))
+    monkeypatch.setattr(scheduler, "NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH", str(empty_dir) + "/")
+    monkeypatch.setattr(scheduler, "should_run_job", lambda files: False)
+    received = []
+
+    def fake_parse_inventory(path):
+        received.append(path)
+        return {"hostA": "1.2.3.4"}
+
+    monkeypatch.setattr(scheduler, "parse_inventory", fake_parse_inventory)
+    monkeypatch.chdir(tmp_path)  # simulate launching from a non-repo directory
+
+    scheduler.job()
+
+    assert received == [scheduler.ANSIBLE_INVENTORY_ABSOLUTE_PATH]
+    assert Path(received[0]).is_absolute()
