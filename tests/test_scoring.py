@@ -161,3 +161,73 @@ def test_scorer_fuzz_scores_always_within_zero_to_100():
         assert set(scores) == set(data)
         for host, value in scores.items():
             assert 0.0 <= value <= 100.0, (host, value, data)
+
+
+def test_main_cli_path_writes_sorted_output_file(tmp_path):
+    # The playbook invokes this script as a standalone python3 process
+    # against HOME-based paths -- the production invocation -- which the
+    # importlib-based tests above never exercise. Run it for real.
+    import json
+    import subprocess
+    import sys
+
+    script_path = os.path.join(
+        _REPO_ROOT, "script_to_generate_overall_benchmark_scores_from_subscores.py")
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "combined_cloud_benchmarker_results.json").write_text(json.dumps({
+        "fast_host": {
+            "cpu_speed_test__events_per_second": 4000.0,
+            "fileio_test__reads_per_second": 2000.0,
+            "memory_speed_test__MiB_transferred": 30000.0,
+            "mutex_test__avg_latency": 1.0,
+            "threads_test__avg_latency": 0.4,
+        },
+        "slow_host": {
+            "cpu_speed_test__events_per_second": 1000.0,
+            "fileio_test__reads_per_second": 500.0,
+            "memory_speed_test__MiB_transferred": 10000.0,
+            "mutex_test__avg_latency": 4.0,
+            "threads_test__avg_latency": 1.6,
+        },
+    }))
+
+    result = subprocess.run(
+        [sys.executable, script_path],
+        env={**os.environ, "HOME": str(home)},
+        capture_output=True, text=True, timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr
+    output_files = list(
+        (home / "benchmark_result_output_files").glob(
+            "combined_cloud_benchmarker_results__overall_score_sorted__*.json"))
+    assert len(output_files) == 1, output_files
+    scores = json.loads(output_files[0].read_text())
+    # fast_host is strictly superior on every metric (latencies included),
+    # so it must score exactly 100 and rank first.
+    assert list(scores)[0] == "fast_host"
+    assert scores["fast_host"] == 100.0
+    ranked = list(scores.values())
+    assert ranked == sorted(ranked, reverse=True)
+
+
+def test_main_cli_exits_nonzero_when_no_data(tmp_path):
+    import subprocess
+    import sys
+
+    script_path = os.path.join(
+        _REPO_ROOT, "script_to_generate_overall_benchmark_scores_from_subscores.py")
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "combined_cloud_benchmarker_results.json").write_text("{}")
+
+    result = subprocess.run(
+        [sys.executable, script_path],
+        env={**os.environ, "HOME": str(home)},
+        capture_output=True, text=True, timeout=60,
+    )
+
+    assert result.returncode == 1
+    # The failure happens before any output directory is created.
+    assert not (home / "benchmark_result_output_files").exists()
