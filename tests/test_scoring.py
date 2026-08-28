@@ -205,9 +205,13 @@ def test_main_cli_path_writes_sorted_output_file(tmp_path):
     assert len(output_files) == 1, output_files
     scores = json.loads(output_files[0].read_text())
     # fast_host is strictly superior on every metric (latencies included),
-    # so it must score exactly 100 and rank first.
+    # so it must rank first. Under custom weights the score carries
+    # unavoidable float-accumulation dust (the weights are normalized by
+    # division, so they sum to 1 only up to rounding); exact 100.0 is only
+    # guaranteed under equal weighting, which the equal-weighting test
+    # above pins down.
     assert list(scores)[0] == "fast_host"
-    assert scores["fast_host"] == 100.0
+    assert scores["fast_host"] == pytest.approx(100.0)
     ranked = list(scores.values())
     assert ranked == sorted(ranked, reverse=True)
 
