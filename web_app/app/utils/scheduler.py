@@ -123,19 +123,18 @@ def ingest_data(db: Session, raw_data, overall_data, datetime_from_file, host_to
             db.add(raw_entry)
         # For overall normalized scores
         if hostname in overall_data:
-            overall_score = overall_data[hostname]
-            if isinstance(overall_score, bool) or not isinstance(overall_score, (int, float)):
+            if isinstance(overall_data[hostname], bool) or not isinstance(overall_data[hostname], (int, float)):
                 logger.error(
                     "Host %r: overall score %r is not a number; ingesting raw "
                     "subscores without the overall score.",
-                    hostname, overall_score,
+                    hostname, overall_data[hostname],
                 )
                 continue
             overall_record = db.query(OverallNormalizedScore).filter_by(**conditions).first()
             if overall_record:
-                overall_record.overall_score = overall_score
+                overall_record.overall_score = overall_data[hostname]
             else:
-                overall_entry = OverallNormalizedScore(**conditions, overall_score=overall_score)
+                overall_entry = OverallNormalizedScore(**conditions, overall_score=overall_data[hostname])
                 db.add(overall_entry)
     db.commit()
 
