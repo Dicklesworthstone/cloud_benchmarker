@@ -29,7 +29,7 @@ NO_DATA_HTML = '''
 '''
 
 
-def build_subscore_figure(raw_df):
+def build_subscore_figure(raw_df: pd.DataFrame) -> go.Figure:
     subscore_fig = go.Figure()
 
     # Adding traces: one line per (IP address, metric) combination.
@@ -95,7 +95,7 @@ def build_subscore_figure(raw_df):
     return subscore_fig
 
 
-def generate_benchmark_charts(db: Session):
+def generate_benchmark_charts(db: Session) -> HTMLResponse:
     logger.info("Generating benchmark charts.")
 
     # Query for raw benchmark subscores

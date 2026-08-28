@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta
 from enum import Enum
 from io import StringIO
-from typing import List, Optional
+from typing import List, Optional, cast
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from web_app.app.chart import generate_benchmark_charts
@@ -54,13 +54,13 @@ PERIOD_DAYS = {
 - To get all data: `/data/raw/`""",
             response_model=List[HistoricalRawBenchmarkSubscoresResponse],
             response_description="A list of raw benchmark subscores.")
-def read_raw_data(db: Session = Depends(get_db), time_period: Optional[TimePeriod] = Query(None, alias="time_period")):
+def read_raw_data(db: Session = Depends(get_db), time_period: Optional[TimePeriod] = Query(None, alias="time_period")) -> List[HistoricalRawBenchmarkSubscoresResponse]:
     logger.info(f"Fetching raw data for the time_period: {time_period}")
     query = db.query(RawBenchmarkSubscores)
     if time_period:
         cutoff_date = datetime.now() - timedelta(days=PERIOD_DAYS[time_period])
-        return query.filter(RawBenchmarkSubscores.datetime >= cutoff_date).all()
-    return query.all()
+        return cast(List[HistoricalRawBenchmarkSubscoresResponse], query.filter(RawBenchmarkSubscores.datetime >= cutoff_date).all())
+    return cast(List[HistoricalRawBenchmarkSubscoresResponse], query.all())
 
 
 @router.get("/data/overall/",
@@ -75,20 +75,20 @@ def read_raw_data(db: Session = Depends(get_db), time_period: Optional[TimePerio
 - To get all data: `/data/overall/`""",
             response_model=List[HistoricalOverallNormalizedScoresResponse],
             response_description="A list of overall normalized scores.")
-def read_overall_data(db: Session = Depends(get_db), time_period: Optional[TimePeriod] = Query(None, alias="time_period")):
+def read_overall_data(db: Session = Depends(get_db), time_period: Optional[TimePeriod] = Query(None, alias="time_period")) -> List[HistoricalOverallNormalizedScoresResponse]:
     logger.info(f"Fetching overall data for the time_period: {time_period}")
     query = db.query(OverallNormalizedScore)
     if time_period:
         cutoff_date = datetime.now() - timedelta(days=PERIOD_DAYS[time_period])
-        return query.filter(OverallNormalizedScore.datetime >= cutoff_date).all()
-    return query.all()
+        return cast(List[HistoricalOverallNormalizedScoresResponse], query.filter(OverallNormalizedScore.datetime >= cutoff_date).all())
+    return cast(List[HistoricalOverallNormalizedScoresResponse], query.all())
 
 
 @router.get("/benchmark_charts/",
             summary="Generate Benchmark Charts",
             description="Generate benchmark charts based on the available data. To access this endpoint, just navigate to the URL: <your_ip_address>:9999/benchmark_charts/. Returns a friendly placeholder page when no data has been ingested yet.",
             response_description="Generated benchmark charts.")
-def benchmark_chart(db: Session = Depends(get_db)):
+def benchmark_chart(db: Session = Depends(get_db)) -> HTMLResponse:
     # Deliberately sync: chart rendering is CPU/IO-bound pandas work, and a
     # sync endpoint lets FastAPI run it in the threadpool instead of
     # stalling the event loop for every other request.
@@ -106,7 +106,7 @@ def benchmark_chart(db: Session = Depends(get_db)):
 
 - To generate and download the CSV: `/benchmark_historical_csv/`""",
             response_description="A CSV file containing historical raw benchmarks and overall normalized scores.")
-def get_benchmark_historical_csv(db: Session = Depends(get_db)):
+def get_benchmark_historical_csv(db: Session = Depends(get_db)) -> StreamingResponse:
     # Deliberately sync: the pandas merge runs in FastAPI's threadpool so
     # the event loop stays free while the CSV is built.
     logger.info("Generating benchmark historical CSV.")

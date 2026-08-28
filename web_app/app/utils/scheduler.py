@@ -4,9 +4,11 @@ import os
 import re
 import subprocess
 import time
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
 from threading import Lock, Thread
+from typing import Any
 
 import schedule
 from decouple import config as decouple_config
@@ -42,7 +44,7 @@ if not os.path.exists(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH):
     initial_setup = True
 
 
-def parse_inventory(file_path):
+def parse_inventory(file_path: str | Path) -> dict[str, str]:
     """Map hostnames to control-node target IPs from inventory lines like
     ``TestnetSupernode01 ansible_host=1.2.3.4``.
 
@@ -62,7 +64,7 @@ def parse_inventory(file_path):
     return host_to_ip_dict
 
 
-def load_combined_results(file_path):
+def load_combined_results(file_path: str | Path) -> dict[str, Any]:
     """Load the combined results file, tolerating every format it can be in.
 
     The playbook writes strict JSON; older versions wrote quasi-JSON with
@@ -84,7 +86,8 @@ def load_combined_results(file_path):
     return parsed
 
 
-def ingest_data(db: Session, raw_data, overall_data, datetime_from_file, host_to_ip):
+def ingest_data(db: Session, raw_data: Mapping[str, Any], overall_data: Mapping[str, Any],
+                datetime_from_file: datetime, host_to_ip: Mapping[str, str]) -> None:
     """Upsert one run's per-host scores in a single transaction.
 
     A malformed host entry must not lose every other host's data for that
@@ -138,8 +141,7 @@ def ingest_data(db: Session, raw_data, overall_data, datetime_from_file, host_to
                 db.add(overall_entry)
     db.commit()
 
-
-def run_playbook():
+def run_playbook() -> None:
     logger.info("Now running ansible playbook...")
     # Merge stderr into stdout: draining two pipes sequentially lets a chatty
     # stderr fill its pipe buffer while we block on stdout -- a classic hang.
@@ -149,14 +151,17 @@ def run_playbook():
         stderr=subprocess.STDOUT,
         text=True
     )
-    for line in iter(process.stdout.readline, ''):
+    stdout = process.stdout
+    if stdout is None:  # unreachable with stdout=PIPE; satisfies the type checker
+        raise RuntimeError("ansible-playbook subprocess produced no stdout pipe")
+    for line in iter(stdout.readline, ''):
         logger.info(line.strip())
-    process.stdout.close()
+    stdout.close()
     process.wait()
     logger.info(f"Ansible playbook run completed with return code {process.returncode}.")
 
 
-def job():
+def job() -> None:
     global initial_setup  # Declare it as global to modify it inside the function
     logger.info("Scheduler job started.")
     files_to_check = [COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH]
@@ -208,7 +213,7 @@ def job():
 _job_lock = Lock()
 
 
-def run_job_safely():
+def run_job_safely() -> None:
     """Run one scheduler tick without ever killing the scheduling loop.
 
     The lock is not reentrant and is never waited on: if a previous tick is
@@ -226,7 +231,7 @@ def run_job_safely():
         _job_lock.release()
 
 
-def should_run_job(file_paths):
+def should_run_job(file_paths: Iterable[str]) -> bool:
     # Staleness threshold is half the configured interval: at the default
     # 360 minutes this is the historical 3 hours, while shorter intervals
     # take effect instead of being silently overridden by a fixed constant.
@@ -245,7 +250,7 @@ def should_run_job(file_paths):
     return False
 
 
-def start_scheduler():
+def start_scheduler() -> None:
     logger.info("Scheduler started.")
     # Register the guarded wrapper so an exception inside one job can never
     # silently terminate periodic benchmarking; clamp the interval because

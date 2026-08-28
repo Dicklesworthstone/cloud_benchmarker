@@ -17,6 +17,8 @@ import datetime
 import json
 import os
 import re
+from collections.abc import Mapping
+from typing import Any
 
 COMBINED_INPUT_FILENAME = "combined_cloud_benchmarker_results.json"
 OUTPUT_DIR_NAME = "benchmark_result_output_files"
@@ -29,7 +31,7 @@ LOWER_IS_BETTER_METRICS = frozenset({
 })
 
 
-def parse_combined_results(content):
+def parse_combined_results(content: str) -> dict[str, Any]:
     """Parse combined-results content, accepting both supported formats.
 
     The current playbook emits strict JSON (quoted keys, enclosing braces).
@@ -56,7 +58,8 @@ def parse_combined_results(content):
     return parsed
 
 
-def calculate_overall_performance(data, weighting="equal_weighting", custom_weights=None):
+def calculate_overall_performance(data: Mapping[str, Any], weighting: str = "equal_weighting",
+                                 custom_weights: Mapping[str, float] | None = None) -> dict[str, float]:
     """Normalize each metric to 0..100 (100 = best) and combine into scores.
 
     ``weighting`` is either ``"equal_weighting"`` or ``"custom"``. Custom
@@ -66,7 +69,7 @@ def calculate_overall_performance(data, weighting="equal_weighting", custom_weig
     if not data:
         return {}
 
-    overall_scores = {}
+    overall_scores: dict[str, list[float]] = {}
     host_names = list(data.keys())
     # Hosts may report different metric subsets (the playbook skips failed
     # tests per host), so take an ordered union: first host's order, then
@@ -77,6 +80,7 @@ def calculate_overall_performance(data, weighting="equal_weighting", custom_weig
             if metric not in metrics:
                 metrics.append(metric)
 
+    weights: Mapping[str, float] = {}
     if weighting == "custom":
         if not custom_weights:
             raise ValueError("Custom weights must be provided for custom weighting.")
@@ -86,7 +90,8 @@ def calculate_overall_performance(data, weighting="equal_weighting", custom_weig
         total_weight = sum(custom_weights.values())
         if total_weight == 0:
             raise ValueError("Sum of custom weights must not be zero.")
-        custom_weights = {k: v / total_weight for k, v in custom_weights.items()}
+        # Normalized to sum to 1; consumed only in the custom branch below.
+        weights = {k: v / total_weight for k, v in custom_weights.items()}
     elif weighting != "equal_weighting":
         raise ValueError(f"Unknown weighting mode: {weighting}")
 
@@ -108,7 +113,7 @@ def calculate_overall_performance(data, weighting="equal_weighting", custom_weig
     result = {}
     for host, normalized_list in overall_scores.items():
         if weighting == "custom":
-            result[host] = sum(n * custom_weights[m] for n, m in zip(normalized_list, metrics))
+            result[host] = sum(n * weights[m] for n, m in zip(normalized_list, metrics))
         else:
             result[host] = sum(normalized_list) / len(normalized_list)
 
