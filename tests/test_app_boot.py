@@ -48,6 +48,57 @@ def test_real_app_lifespan_boots_dashboard_and_shuts_down(monkeypatch):
     assert fake_engine.disposed  # lifespan teardown released the DB pool
 
 
+def test_poll_forever_ticks_and_sleeps_each_cycle(monkeypatch):
+    # The polling loop must wake the schedule library once a minute. A
+    # sentinel from the fake sleep breaks the otherwise-infinite loop after
+    # two full cycles so the test needs no threads and no timeouts.
+    import pytest
+
+    from web_app.app.utils import scheduler
+
+    calls = {"run_pending": 0, "sleeps": 0}
+    monkeypatch.setattr(
+        scheduler.schedule, "run_pending",
+        lambda: calls.__setitem__("run_pending", calls["run_pending"] + 1))
+
+    class LoopBroken(Exception):
+        pass
+
+    def fake_sleep(seconds):
+        calls["sleeps"] += 1
+        calls["sleep_seconds"] = seconds
+        if calls["sleeps"] >= 2:
+            raise LoopBroken()
+
+    monkeypatch.setattr(scheduler.time, "sleep", fake_sleep)
+
+    with pytest.raises(LoopBroken):
+        scheduler._poll_forever()
+
+    assert calls["run_pending"] == 2  # each cycle woke the schedule library first
+    assert calls["sleep_seconds"] == 60  # then slept the one-minute poll interval
+
+
+def test_run_playbook_raises_loudly_when_stdout_pipe_missing(monkeypatch):
+    # The stdout=None guard is unreachable with stdout=PIPE; exercise it by
+    # injecting a Popen stand-in so the loud failure stays covered.
+    import pytest
+
+    from web_app.app.utils import scheduler
+
+    class FakeProc:
+        stdout = None
+        returncode = -1
+
+        def wait(self):
+            return -1
+
+    monkeypatch.setattr(scheduler.subprocess, "Popen", lambda *a, **k: FakeProc())
+
+    with pytest.raises(RuntimeError, match="no stdout pipe"):
+        scheduler.run_playbook()
+
+
 def test_run_playbook_drains_merged_output_without_deadlock(tmp_path, monkeypatch):
     # A chatty playbook (>64 KB on both stdout and stderr) must be drained
     # line-by-line with stderr merged into stdout, or a full stderr pipe

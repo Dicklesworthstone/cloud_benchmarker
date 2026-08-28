@@ -253,6 +253,13 @@ def should_run_job(file_paths: Iterable[str]) -> bool:
     return False
 
 
+def _poll_forever() -> None:
+    """Wake the schedule library once a minute; runs on a daemon thread."""
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+
 def start_scheduler() -> None:
     logger.info("Scheduler started.")
     # Register the guarded wrapper so an exception inside one job can never
@@ -260,12 +267,7 @@ def start_scheduler() -> None:
     # the schedule library rejects anything below one minute.
     schedule.every(max(1, PLAYBOOK_RUN_INTERVAL_IN_MINUTES)).minutes.do(run_job_safely)
 
-    def run():
-        while True:
-            schedule.run_pending()
-            time.sleep(60)
-
-    polling_thread = Thread(target=run, daemon=True)
+    polling_thread = Thread(target=_poll_forever, daemon=True)
     polling_thread.start()
     # First run happens inline AFTER the polling thread is already live, so a
     # failure here is contained by run_job_safely and retried next tick.

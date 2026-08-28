@@ -70,6 +70,50 @@ def test_repo_anchored_sqlite_url_variants():
         assert _repo_anchored_sqlite_url(url) == url, url
 
 
+def test_get_db_yields_session_and_closes_on_exit(monkeypatch):
+    from web_app.app.database import init_db
+
+    closed = []
+
+    class FakeSession:
+        def close(self):
+            closed.append(1)
+
+    monkeypatch.setattr(init_db, "SessionLocal", FakeSession)
+
+    gen = init_db.get_db()
+    session = next(gen)
+    assert isinstance(session, FakeSession)
+    assert closed == []  # not closed while the request is using it
+
+    try:
+        next(gen)  # exhaust the generator: the request finished
+    except StopIteration:
+        pass
+    assert closed == [1]  # session closed after the request
+
+
+def test_setup_logger_attaches_file_and_stream_handlers(tmp_path, monkeypatch):
+    # The handler-adding branch runs once per process at import; exercise it
+    # directly with redirected paths and restore the global logger after.
+    from web_app.app import logger_config
+
+    monkeypatch.setattr(logger_config, "OLD_LOGS_DIR", tmp_path / "old_logs")
+    monkeypatch.setattr(logger_config, "LOG_FILE_PATH", tmp_path / "cloud_benchmarker.log")
+    saved = logger_config.logger.handlers[:]
+    logger_config.logger.handlers.clear()
+    try:
+        result = logger_config.setup_logger()
+        kinds = [type(h).__name__ for h in result.handlers]
+        assert kinds == ["RotatingFileHandler", "StreamHandler"]
+        assert result.handlers[0].baseFilename == str(tmp_path / "cloud_benchmarker.log")
+    finally:
+        for handler in logger_config.logger.handlers:
+            if handler not in saved:
+                handler.close()
+        logger_config.logger.handlers[:] = saved
+
+
 def test_init_db_creates_all_model_tables(clean_db):
     from sqlalchemy import inspect
 

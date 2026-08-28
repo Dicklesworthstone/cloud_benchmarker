@@ -395,3 +395,57 @@ def test_ingest_data_skips_only_non_numeric_overall_score(clean_db):
     assert clean_db.query(RawBenchmarkSubscores).count() == 2  # raw rows survive
     scores = {r.hostname: r.overall_score for r in clean_db.query(OverallNormalizedScore).all()}
     assert scores == {"hostB": 75.5}  # only hostB's overall row landed
+
+
+def test_ingest_data_skips_non_dict_host_payload(clean_db):
+    # The non-dict branch of the malformed-host isolation: a host whose
+    # "scores" are not an object at all (e.g. a bare list from broken JSON
+    # assembly) must skip alone, like the unknown-keys case.
+    from web_app.app.database.data_models import RawBenchmarkSubscores
+    from web_app.app.utils.scheduler import ingest_data
+
+    now = datetime(2026, 8, 28, 12, 0, 0)
+    raw_data = {
+        "hostA": dict(RAW_METRICS_HOST_A),
+        "hostList": ["not", "a", "dict"],
+    }
+
+    ingest_data(clean_db, raw_data, {}, now, {"hostA": "1.2.3.4"})
+
+    hostnames = {r.hostname for r in clean_db.query(RawBenchmarkSubscores).all()}
+    assert hostnames == {"hostA"}
+
+
+def test_job_attaches_fresh_overall_scores_from_file(clean_db, tmp_path, monkeypatch):
+    # The happy path that was never exercised: a FRESH overall-scores file
+    # (mtime newer than the combined results) must be read and attached to
+    # this run's rows. The stale and absent paths had tests; this one
+    # had none.
+    import json
+    import os
+    import time
+
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.utils import scheduler
+
+    overall_dir = tmp_path / "benchmark_result_output_files"
+    overall_dir.mkdir()
+    fresh_file = overall_dir / "combined_cloud_benchmarker_results__overall_score_sorted__fresh.json"
+    fresh_file.write_text(json.dumps({"hostA": 87.5}))
+
+    combined = tmp_path / "combined_cloud_benchmarker_results.json"
+    combined.write_text(json.dumps({"hostA": dict(RAW_METRICS_HOST_A)}))
+    future = time.time() + 60
+    os.utime(fresh_file, (future, future))  # mtime strictly newer than combined
+
+    monkeypatch.setattr(scheduler, "initial_setup", False)
+    monkeypatch.setattr(scheduler, "NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH", str(overall_dir) + "/")
+    monkeypatch.setattr(scheduler, "COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH", str(combined))
+    monkeypatch.setattr(scheduler, "should_run_job", lambda files: False)
+    monkeypatch.setattr(scheduler, "parse_inventory", lambda path: {"hostA": "1.2.3.4"})
+
+    scheduler.job()
+
+    assert clean_db.query(RawBenchmarkSubscores).count() == 1
+    scores = {r.hostname: r.overall_score for r in clean_db.query(OverallNormalizedScore).all()}
+    assert scores == {"hostA": 87.5}
