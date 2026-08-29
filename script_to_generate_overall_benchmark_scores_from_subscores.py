@@ -133,7 +133,7 @@ def calculate_overall_performance(data: Mapping[str, Any], weighting: str = "equ
 if __name__ == "__main__":
     input_file_path = os.path.join(os.path.expanduser("~"), COMBINED_INPUT_FILENAME)
     print(f'Now loading input file {input_file_path}...')
-    with open(input_file_path, 'r') as f:
+    with open(input_file_path, 'r', encoding='utf-8') as f:
         data = parse_combined_results(f.read())
     if not data:
         print(f"No benchmark results found in {input_file_path}; nothing to score.")
@@ -151,7 +151,14 @@ if __name__ == "__main__":
     output_directory = os.path.join(os.path.expanduser("~"), OUTPUT_DIR_NAME)
     os.makedirs(output_directory, exist_ok=True)
     output_file = f'{output_directory}/combined_cloud_benchmarker_results__overall_score_sorted__{timestamp}.json'
-    with open(output_file, 'w') as f:
+    # Atomic write: job() picks the newest *.json here by mtime, so a
+    # kill mid-write would leave a truncated file that passes the
+    # freshness check and crashes every ingest until the next run.
+    # Write to a sibling temp file (not *.json, so the glob misses it)
+    # and rename into place.
+    tmp_output = f'{output_file}.tmp'
+    with open(tmp_output, 'w', encoding='utf-8') as f:
         json.dump(sorted_scores, f, indent=4)
+    os.replace(tmp_output, output_file)
     print(f'Overall scores written to {output_file}.')
     print('Final Scores:', sorted_scores)

@@ -226,6 +226,10 @@ def test_main_cli_path_writes_sorted_output_file(tmp_path):
     # so it must rank first with EXACTLY 100: the scorer rounds away the
     # weight-normalization float dust (found producing
     # 49.99999999999999 for a neutral host in real playbook output).
+    # The atomic write must leave no *.tmp sibling behind (a residue would
+    # mean the rename step failed) and the newest file must be the real
+    # output, never a partial write.
+    assert list((home / "benchmark_result_output_files").glob("*.tmp")) == []
     assert list(scores)[0] == "fast_host"
     assert scores["fast_host"] == 100.0
 

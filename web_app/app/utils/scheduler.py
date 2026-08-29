@@ -39,7 +39,7 @@ if not os.path.exists(NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH):
     initial_setup = True
 
 if not os.path.exists(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH):
-    with open(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH, 'w') as f:
+    with open(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH, 'w', encoding='utf-8') as f:
         f.write("{}")  # Initialize with empty JSON object
     initial_setup = True
 
@@ -53,7 +53,7 @@ def parse_inventory(file_path: str | Path) -> dict[str, str]:
     """
     logger.info(f"Parsing inventory file at {file_path}.")
     host_to_ip_dict = {}
-    with open(file_path, 'r') as f:
+    with open(file_path, 'r', encoding='utf-8') as f:
         for line in f:
             stripped = line.strip()
             if not stripped or stripped.startswith(('[', '#', ';')):
@@ -71,7 +71,7 @@ def load_combined_results(file_path: str | Path) -> dict[str, Any]:
     unquoted host keys and no enclosing braces. An empty file parses to {}.
     """
     logger.info(f"Reading results file at {file_path}.")
-    with open(file_path, 'r') as f:
+    with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read().strip()
     if not content:
         return {}
@@ -195,7 +195,7 @@ def job() -> None:
         # file look fresh.
         if os.path.getmtime(latest_overall_file) >= os.path.getmtime(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH):
             logger.info(f"Reading overall data from JSON file at {latest_overall_file}.")
-            with open(latest_overall_file) as f:
+            with open(latest_overall_file, 'r', encoding='utf-8') as f:
                 overall_data = json.load(f)
         else:
             logger.warning("Latest overall scores file predates this run's combined results; "
