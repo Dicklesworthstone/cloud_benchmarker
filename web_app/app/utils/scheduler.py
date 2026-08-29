@@ -111,18 +111,23 @@ def ingest_data(db: Session, raw_data: Mapping[str, Any], overall_data: Mapping[
                 hostname, sorted(unknown_keys),
             )
             continue
+        # The natural key is (datetime, hostname) -- both tables' unique
+        # constraints -- NOT including IP_address: filtering by an IP that
+        # changed in the inventory since the first ingest would miss the
+        # existing row and the INSERT would violate the unique constraint,
+        # losing the whole batch. The IP is run metadata; it updates.
         conditions = {
             "datetime": datetime_from_file,
             "hostname": hostname,
-            "IP_address": host_to_ip.get(hostname, 'UNKNOWN')
         }
+        ip_address = host_to_ip.get(hostname, 'UNKNOWN')
         # For raw benchmark subscores
         raw_record = db.query(RawBenchmarkSubscores).filter_by(**conditions).first()
         if raw_record:
-            for k, v in scores.items():
+            for k, v in {**scores, "IP_address": ip_address}.items():
                 setattr(raw_record, k, v)
         else:
-            raw_entry = RawBenchmarkSubscores(**conditions, **scores)
+            raw_entry = RawBenchmarkSubscores(**conditions, IP_address=ip_address, **scores)
             db.add(raw_entry)
         # For overall normalized scores
         if hostname in overall_data:
@@ -136,8 +141,9 @@ def ingest_data(db: Session, raw_data: Mapping[str, Any], overall_data: Mapping[
             overall_record = db.query(OverallNormalizedScore).filter_by(**conditions).first()
             if overall_record:
                 overall_record.overall_score = overall_data[hostname]
+                setattr(overall_record, "IP_address", ip_address)
             else:
-                overall_entry = OverallNormalizedScore(**conditions, overall_score=overall_data[hostname])
+                overall_entry = OverallNormalizedScore(**conditions, IP_address=ip_address, overall_score=overall_data[hostname])
                 db.add(overall_entry)
     db.commit()
 

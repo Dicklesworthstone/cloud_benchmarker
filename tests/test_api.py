@@ -157,3 +157,43 @@ def test_charts_render_overall_only_without_subscore_figure(api_client):
     assert resp.status_code == 200
     assert "Overall Normalized Scores Over Time" in resp.text
     assert "cpu_speed_test__events_per_second" not in resp.text
+
+
+def test_raw_endpoint_serves_partially_failed_host_runs(api_client):
+    # Regression: the playbook omits metrics from failed sysbench tests by
+    # design, so a raw row can carry NULL metric columns. The response model
+    # used to demand all five floats, so ONE partial row 500'd /data/raw/
+    # for every host, permanently for those historical rows.
+    from web_app.app.database.data_models import RawBenchmarkSubscores
+
+    session = _session(api_client)
+    session.add(RawBenchmarkSubscores(
+        datetime=datetime(2026, 8, 29, 12, 0, 0), hostname="full", IP_address="1.1.1.1",
+        cpu_speed_test__events_per_second=1000.0, fileio_test__reads_per_second=500.0,
+        memory_speed_test__MiB_transferred=10000.0, mutex_test__avg_latency=50.0,
+        threads_test__avg_latency=1.0,
+    ))
+    session.add(RawBenchmarkSubscores(
+        datetime=datetime(2026, 8, 29, 12, 0, 0), hostname="partial", IP_address="1.1.1.2",
+        cpu_speed_test__events_per_second=900.0, fileio_test__reads_per_second=None,
+        memory_speed_test__MiB_transferred=9000.0, mutex_test__avg_latency=55.0,
+        threads_test__avg_latency=1.2,
+    ))
+    session.commit()
+
+    resp = api_client.get("/data/raw/")
+    assert resp.status_code == 200
+    rows = {row["hostname"]: row for row in resp.json()}
+    assert rows["full"]["fileio_test__reads_per_second"] == 500.0
+    assert rows["partial"]["cpu_speed_test__events_per_second"] == 900.0
+    assert rows["partial"]["fileio_test__reads_per_second"] is None  # the failed test
+    csv_resp = api_client.get("/benchmark_historical_csv/")
+    assert csv_resp.status_code == 200
+    partial_line = [line for line in csv_resp.text.splitlines() if ",partial," in line][0]
+    fields = partial_line.split(",")
+    # datetime,hostname,IP_address,cpu,fileio(FAILED->empty),memory,mutex,threads,overall(absent->empty)
+    assert fields[3] == "900.0"
+    assert fields[4] == ""
+    assert fields[8] == ""
+    charts_resp = api_client.get("/benchmark_charts/")
+    assert charts_resp.status_code == 200

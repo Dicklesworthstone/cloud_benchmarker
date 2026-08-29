@@ -52,11 +52,15 @@ class HistoricalRawBenchmarkSubscoresResponse(BaseModel):
     datetime: datetime
     hostname: str
     IP_address: str
-    cpu_speed_test__events_per_second: float
-    fileio_test__reads_per_second: float
-    memory_speed_test__MiB_transferred: float
-    mutex_test__avg_latency: float
-    threads_test__avg_latency: float
+    # The playbook omits metrics from failed sysbench tests by design, so
+    # partially-NULL rows are expected data; the response contract mirrors
+    # the storage contract (nullable metrics), not an idealized all-metrics
+    # row.
+    cpu_speed_test__events_per_second: Optional[float] = None
+    fileio_test__reads_per_second: Optional[float] = None
+    memory_speed_test__MiB_transferred: Optional[float] = None
+    mutex_test__avg_latency: Optional[float] = None
+    threads_test__avg_latency: Optional[float] = None
     model_config = ConfigDict(from_attributes=True)
 
 class HistoricalOverallNormalizedScoresResponse(BaseModel):

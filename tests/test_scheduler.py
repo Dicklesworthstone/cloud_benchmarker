@@ -449,3 +449,27 @@ def test_job_attaches_fresh_overall_scores_from_file(clean_db, tmp_path, monkeyp
     assert clean_db.query(RawBenchmarkSubscores).count() == 1
     scores = {r.hostname: r.overall_score for r in clean_db.query(OverallNormalizedScore).all()}
     assert scores == {"hostA": 87.5}
+
+
+def test_reingest_with_changed_inventory_ip_updates_instead_of_crashing(clean_db):
+    # Regression: the upsert conditions included IP_address, but the unique
+    # constraints are (datetime, hostname) only. If the operator fixed a
+    # host's IP in the inventory between the original ingest and a re-ingest
+    # of the same combined file (e.g. retry after a failed scoring step),
+    # the query missed the existing row and the INSERT raised IntegrityError,
+    # losing the whole batch. The natural key is (datetime, hostname); the
+    # IP is run metadata and must update.
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.utils.scheduler import ingest_data
+
+    now = datetime(2026, 8, 29, 12, 0, 0)
+    scores = dict(RAW_METRICS_HOST_A)
+
+    ingest_data(clean_db, {"hostA": scores}, {"hostA": 50.0}, now, {"hostA": "1.1.1.1"})
+    ingest_data(clean_db, {"hostA": scores}, {"hostA": 50.0}, now, {"hostA": "2.2.2.2"})
+
+    raw_rows = clean_db.query(RawBenchmarkSubscores).all()
+    overall_rows = clean_db.query(OverallNormalizedScore).all()
+    assert len(raw_rows) == 1 and len(overall_rows) == 1
+    assert raw_rows[0].IP_address == "2.2.2.2"
+    assert overall_rows[0].IP_address == "2.2.2.2"
