@@ -8,6 +8,33 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 ---
 
+## 2026-08-29 -- Fresh-Eyes Fixes, I/O Hardening, and Governance
+
+### API and Ingest Correctness (`web_app/app/database/data_models.py`, `web_app/app/utils/scheduler.py`)
+
+- **Partially-failed host runs no longer break `/data/raw/`**: the playbook omits metrics from failed sysbench tests by design, so raw rows legitimately carry NULL metric columns -- but the response model declared all five metrics as non-Optional `float`. The first partial row raised a response-validation error that 500'd the endpoint for EVERY host, permanently for those historical rows. The response contract now mirrors the storage contract (`Optional[float]` metric fields); charts (plotly gap) and the CSV (empty cell) already degraded gracefully.
+- **Ingest upsert now keys on the natural key `(datetime, hostname)`**: the upsert filter included `IP_address`, but both tables' unique constraints are `(datetime, hostname)`. If the operator changed a host's IP in the inventory between the original ingest and a re-ingest of the same combined file (e.g. a retry after a failed scoring step), the query missed the existing row and the INSERT violated the unique constraint -- `IntegrityError`, whole batch lost. The IP is now treated as run metadata and updates on existing rows.
+- Both bugs were proven failing-before with hard evidence (`ResponseValidationError` and `IntegrityError` reproductions), then locked in with regression tests that pass only with the fixes. Suite now 61 tests, still 100% statement coverage.
+
+### File I/O Hardening (`script_to_generate_overall_benchmark_scores_from_subscores.py`, `web_app/app/utils/scheduler.py`)
+
+- **The scoring script's output write is atomic**: `job()` picks the newest `*.json` in the output directory by mtime, so a kill mid-write would leave a truncated file that passes the freshness check and then crashes every ingest until the next run. The script now writes to a sibling `.tmp` file (which the glob misses) and renames into place with `os.replace`.
+- Every file read/write in the scheduler and the scoring script now passes explicit `encoding='utf-8'`, so behavior no longer depends on the host locale.
+
+### Dependencies
+
+- `pytest` floor raised 8.4.2 -> 9.0.3 in `requirements-dev.txt` to clear PYSEC-2026-1845.
+
+### Governance and Documentation
+
+- Added `AGENTS.md` -- operational law for AI agents in this repo: the layout map, the five verify gates, the coordination law (born of the 2026-08-28 double-execution collisions), the honest-credit floor, and the repo facts that bite.
+- Codified the claim-time law (check closed beads before claiming, reserve files via Agent Mail, message before editing when concurrent commits are live) as closed doctrine bead `cloud_benchmarker-m03`.
+
+### Verification (2026-08-29 reality check)
+
+- All five verify gates green at `47b41dc`: 61 tests passing, 100% statement coverage (394/394 statements), ruff, mypy, bandit, and the playbook syntax check all clean.
+- An independent end-to-end smoke re-confirmed the whole chain at the current HEAD: the real scoring script reproduced the documented contract scores exactly (`66.6666666667` vs `33.3333333333`), and real uvicorn served every endpoint -- correct data from `/data/raw/` and `/data/overall/`, the documented 422 on a bogus `time_period`, rendered multi-host charts, per-host CSV score pairing, a staleness-gated scheduler tick that skipped the playbook on fresh data and still ingested, and graceful teardown.
+
 ## 2026-08-28 -- Path Independence, Ingest Isolation, and Type Coverage
 
 ### Runtime Paths Are Now Fully CWD-Independent (`logger_config.py`, `database/init_db.py`, `utils/scheduler.py`)
@@ -44,6 +71,11 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 - **The multi-host mechanics were verified live with a two-host run** (two `connection=local` inventory entries, scratch `HOME`): the combine stage joined both per-host fetch directories, scoring emitted two exact neutral-`50.0` entries (the float-dust fix holds for N hosts), one `job()` tick landed two raw rows sharing a run timestamp plus two overall rows, the historical CSV paired each host with its own score, and the charts rendered multi-host traces.
 - **The canonical production launch was smoke-tested under real uvicorn** (scratch-`HOME` artifacts, loopback bind): all four endpoints plus `/docs` and the dashboard served correctly over real HTTP — including the documented 422 validation on a bogus `time_period` — the uvicorn-spawned scheduler thread ran its real first tick inside the server (staleness guard skipped the playbook on fresh data and still ingested), and a graceful SIGTERM produced the full ordered teardown with `engine.dispose()` and zero errors.
 - **The cross-host ranking ran live with genuinely different values**: two real single-host playbook runs captured per-host results (natural run-to-run noise made hostB win cpu/mutex/threads, hostA win memory), and the real combine+scoring plays executed against the captured dirs via `--start-at-task`. The weighted normalization ranked them exactly (`hostB` 66.6666666667 vs `hostA` 33.3333333333 — 400/6 vs 200/6 under the playbook's custom weights), `job()` ingested both with distinct scores, and the CSV paired each host with its own score.
+
+### CI Matrix and Coverage Closure
+
+- **Python 3.14 joined the CI matrix**, and the test client moved to `httpx2` to clear FastAPI's `TestClient` deprecation (`8f93ea4`, bead `cloud_benchmarker-qo6`).
+- **Statement coverage reached 100% across every module** (394/394 statements): the last uncovered lines -- the scheduler polling loop, the logger handler branches, `get_db` -- gained dedicated tests, taking the suite from 98% to full coverage at 59 tests.
 
 ---
 
@@ -294,6 +326,16 @@ Introduced in the first commit:
 
 | Date | Hash | Summary |
 |------|------|---------|
+| 2026-08-29 | [`47b41dc`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/47b41dc32315a0f784591452fc1da68a421633cd) | fix: two fresh-eyes bugs from deep review of fellow-agent code |
+| 2026-08-29 | [`bff68e3`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/bff68e3a5c53857cda8edbbb0360fc0bc3967d47) | fix(deps): upgrade pytest past PYSEC-2026-1845 (8.4.2 -> 9.0.3 floor) |
+| 2026-08-29 | [`3be2235`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/3be2235310f9a87161999fe38f5889bf5e2bb153) | docs(agents): add AGENTS.md; retire the tracker doctrine bead |
+| 2026-08-29 | [`4c60816`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4c60816e4810f48475efebfdbd913f3a30663331) | docs(beads): add claim-time law doctrine issue |
+| 2026-08-29 | [`cb2a7c8`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/cb2a7c8905e2c1e9b9124864d03caabc162034fb) | fix(io): atomic scoring output; explicit UTF-8 encoding on all file I/O |
+| 2026-08-28 | [`2496129`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/2496129a21ef12126d85aad2838442b06fce586f) | docs(changelog): record the live cross-host ranking verification |
+| 2026-08-28 | [`ff70796`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/ff707963aaec5451892cd832ba059c76aa45eb41) | docs(changelog): record the production uvicorn smoke test |
+| 2026-08-28 | [`40ae9c8`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/40ae9c85a5c8b2c19aed986d78944fb79282e9fa) | chore(beads): track production uvicorn launch verification task |
+| 2026-08-28 | [`8f93ea4`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/8f93ea4fde6712d9fd8557a501108720f2e24f17) | ci: test Python 3.14; adopt httpx2 to clear the TestClient deprecation |
+| 2026-08-28 | [`0bd541e`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/0bd541eabc74241c3aa8190019574592f7ded7ff) | docs(changelog): complete the Commit Index with all post-February commits |
 | 2026-08-28 | [`3b2fe4b`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/3b2fe4b7404f9edf0e1386a1f030f632ab221b44) | test(coverage): close the last gaps -- 100% statement coverage |
 | 2026-08-28 | [`796fa97`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/796fa9773879ea1af7a8d5b06ac4b7adbbf9df24) | chore(config): stop tracking .env; document cp from .env.example |
 | 2026-08-28 | [`448cbaa`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/448cbaa972c459f360ce6238097e4060b5d28798) | docs(changelog): record the localhost end-to-end pipeline verification |
