@@ -19,7 +19,7 @@ A FastAPI + Ansible tool that benchmarks cloud VPSes with `sysbench` (CPU, memor
 | `web_app/app/chart.py` | Subscore figure (exact IP/metric dropdown matching) + charts page |
 | `script_to_generate_overall_benchmark_scores_from_subscores.py` | Standalone scorer the playbook copies to `/tmp` (parser duplication with `scheduler.load_combined_results` is forced — do not "fix" without solving that) |
 | `benchmark-playbook.yml` | 5 sysbench tests per host → per-host JSON → fetch → combine → scoring |
-| `tests/` | 59 tests, 100% statement coverage; conftest isolates HOME + DB before any app import |
+| `tests/` | 61 tests, 100% statement coverage; conftest isolates HOME + DB before any app import |
 
 ## Verify gates — ALL green before any close
 
@@ -57,6 +57,6 @@ CI (`.github/workflows/ci.yml`) runs these on Python 3.11/3.13/3.14. The bandit 
 - The scoring script's output write is atomic (`.tmp` + `os.replace`); keep it that way — `job()` picks the newest `*.json` by mtime.
 - Timestamps are local-naive by convention (mtime-derived), documented at both the scheduler and API cutoff sites. Do not convert one side to UTC alone.
 
-## Current state (2026-08-28)
+## Current state (2026-08-29)
 
-Fully verified: 59 tests, 100% statement coverage, full type annotations, live single-host + two-host pipeline runs, cross-host ranking exact (400/6 vs 200/6), production uvicorn smoke with graceful teardown, CI green on all three Pythons. 17 closed beads in `.beads/`. When in doubt about how something should behave, the beads' close reasons cite the evidence.
+Fully verified: 61 tests, 100% statement coverage, full type annotations, live single-host + two-host pipeline runs, cross-host ranking exact (400/6 vs 200/6), production uvicorn smoke with graceful teardown, CI green on all three Pythons. 24 closed beads in `.beads/`. When in doubt about how something should behave, the beads' close reasons cite the evidence.
