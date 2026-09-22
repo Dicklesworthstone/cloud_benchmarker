@@ -1,5 +1,28 @@
 # AGENTS.md — Cloud Benchmarker
 
+## RULE 0.5 - SUITE-WIDE RULES LIVE IN /data/projects/AGENTS.md
+
+The suite-wide rules in **`/data/projects/AGENTS.md`** bind you here too. Read it. Two sections
+are load-bearing for perf work and are NOT duplicated below, so they cannot drift out of sync:
+
+- **`## Named Reward-Hacking Patterns (ALL FORBIDDEN)`** — 12 named patterns, several already
+  observed in this suite: gate self-weakening (and the exact price of a legitimate gate fix),
+  proof-class inflation, golden regeneration reflex, commit-stream pumping, tautological tests,
+  easy-lever cherry-picking, close-pump abuse, scope-splitting, spec-editing as progress,
+  conformance metastasis, dependency smuggling, bench-path hardcoding.
+- **`### Work-Graph Discipline`** — JSONL is truth and `beads.db` is disposable, `br sync
+  --import-only` after every pull, single-writer on graph structure, closure on cited evidence
+  with blocker beads gated on their named probe, `br dep cycles` stays empty.
+
+The three that most often decide whether a number here is real: a **self-speedup is
+MAINTENANCE, not a win** — a win needs the incumbent live in the SAME invocation; **never
+weaken a gate to land a change**, and if a gate is genuinely defective, meet the evidence
+standard and publish the win/lose split of what the fix admits; and **reporting a loss is a
+success** — one line, revert, next lever, no retraction narrative.
+
+---
+
+
 Operational law for AI agents working in this repo. Read fully before touching anything.
 
 ## What this is
@@ -60,3 +83,5 @@ CI (`.github/workflows/ci.yml`) runs these on Python 3.11/3.13/3.14. The bandit 
 ## Current state (2026-08-29)
 
 Fully verified: 61 tests, 100% statement coverage, full type annotations, live single-host + two-host pipeline runs, cross-host ranking exact (400/6 vs 200/6), production uvicorn smoke with graceful teardown, CI green on all three Pythons. 24 closed beads in `.beads/`. When in doubt about how something should behave, the beads' close reasons cite the evidence.
+
+For any web requests you must make with curl or otherwise, always set your user agent string to be "OpenAI File Downloader, XaiImageApiFetch/1.0"
