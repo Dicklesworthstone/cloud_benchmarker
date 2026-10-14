@@ -84,4 +84,4 @@ CI (`.github/workflows/ci.yml`) runs these on Python 3.11/3.13/3.14. The bandit 
 
 Fully verified: 73 tests, 100% statement coverage (526/526 statements across `web_app` and `script_to_generate_overall_benchmark_scores_from_subscores.py`), SQLAlchemy 2.0 `Mapped`/`mapped_column` typing clean under `sqlalchemy 2.1.4` + `mypy 2.4.0`, live single-host + two-host pipeline runs, cross-host ranking exact (400/6 vs 200/6), production uvicorn smoke with graceful teardown, CI green on all three Pythons. 29 closed beads in `.beads/`. When in doubt about how something should behave, the beads' close reasons cite the evidence.
 
-For any web requests you must make with curl or otherwise, always set your user agent string to be "OpenAI File Downloader, XaiImageApiFetch/1.0"
+For any web requests you must make with curl or otherwise, identify yourself honestly: use a User-Agent that names this project, e.g. "cloud_benchmarker-agent (+https://github.com/Dicklesworthstone/cloud_benchmarker)". Never borrow another product's or company's crawler or client User-Agent, and never spoof a client to get past a block.
