@@ -76,9 +76,9 @@ def parse_inventory(file_path: str | Path) -> dict[str, str]:
                 if not stripped or stripped.startswith('['):
                     continue
                 hostname = stripped.split()[0]
-                match = re.search(r'\sansible_host=(\S+)', stripped)
+                match = re.search(r'\sansible_host=[\'"]?([^\s\'"]+)', stripped)
                 if '=' not in hostname and match:
-                    host_to_ip_dict[hostname] = match.group(1).strip('\'"')
+                    host_to_ip_dict[hostname] = match.group(1)
     except OSError:
         logger.warning(f"Inventory file at {file_path} could not be read; defaulting host IPs to UNKNOWN.")
         return {}
@@ -120,7 +120,7 @@ def ingest_data(db: Session, raw_data: Mapping[str, Any], overall_data: Mapping[
     """
     raw_columns = set(METRIC_COLUMNS)
     for hostname, scores in raw_data.items():
-        if not isinstance(scores, dict):
+        if not isinstance(scores, Mapping):
             logger.error(
                 "Host %r: raw subscores are %s, expected an object; skipping host.",
                 hostname, type(scores).__name__,

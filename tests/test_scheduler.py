@@ -489,6 +489,7 @@ def test_parse_inventory_handles_tabs_and_quoted_ips(tmp_path):
         "hostSingleQuote  ansible_host='10.1.2.4' ; inline semicolon comment\n"
         "hostPrefixCollision backup_ansible_host=9.9.9.9 ansible_host=10.1.2.5 # inline hash comment\n"
         "hostCommentedOut ansible_connection=local # ansible_host=9.9.9.9\n"
+        'hostEmptyQuote ansible_host=""\n'
         "[all:vars]\n"
         "ansible_host=9.9.9.9\n"
     )

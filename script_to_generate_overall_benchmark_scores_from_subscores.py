@@ -73,7 +73,7 @@ def calculate_overall_performance(data: Mapping[str, Any], weighting: str = "equ
     to 1 and must cover every active metric with a finite non-negative weight.
     """
     if weighting == "custom":
-        if not custom_weights:
+        if not isinstance(custom_weights, Mapping) or not custom_weights:
             raise ValueError("Custom weights must be provided for custom weighting.")
         if any(not _is_valid_metric_value(w) or w < 0 for w in custom_weights.values()):
             raise ValueError("Custom weights must be finite non-negative numbers.")
@@ -100,8 +100,7 @@ def calculate_overall_performance(data: Mapping[str, Any], weighting: str = "equ
                 metrics.append(metric)
 
     weights: Mapping[str, float] = {}
-    if weighting == "custom":
-        assert custom_weights is not None
+    if weighting == "custom" and custom_weights is not None:
         missing = [m for m in metrics if m not in custom_weights]
         if missing:
             raise ValueError(f"Custom weights missing entries for metrics: {missing}")

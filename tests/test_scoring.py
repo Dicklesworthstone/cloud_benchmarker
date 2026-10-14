@@ -106,6 +106,9 @@ def test_custom_weights_are_normalized_and_missing_weight_rejected():
                                               custom_weights=None)
     with pytest.raises(ValueError):
         scoring.calculate_overall_performance({"h": HOST_A}, weighting="custom",
+                                              custom_weights=[1.0, 2.0])  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        scoring.calculate_overall_performance({"h": HOST_A}, weighting="custom",
                                               custom_weights={"cpu_speed_test__events_per_second": 1.0})
     with pytest.raises(ValueError):
         scoring.calculate_overall_performance({"h": HOST_A}, weighting="custom",
