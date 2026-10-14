@@ -63,20 +63,22 @@ def parse_inventory(file_path: str | Path) -> dict[str, str]:
     ``TestnetSupernode01 ansible_host=1.2.3.4``.
 
     Tolerates any key order, whitespace (spaces or tabs), quoted values,
-    extra inline variables, group headers, blank lines, and comments; skips
-    lines without an ansible_host assignment.
+    extra inline variables, group headers, blank lines, and full-line or
+    inline comments (``#`` / ``;``); skips standalone variable assignments
+    (e.g. under ``[all:vars]``) and lines without an ``ansible_host`` token.
     """
     logger.info(f"Parsing inventory file at {file_path}.")
     host_to_ip_dict: dict[str, str] = {}
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
-                stripped = line.strip()
-                if not stripped or stripped.startswith(('[', '#', ';')):
+                stripped = line.split('#', 1)[0].split(';', 1)[0].strip()
+                if not stripped or stripped.startswith('['):
                     continue
-                match = re.search(r'ansible_host=(\S+)', stripped)
-                if match:
-                    host_to_ip_dict[stripped.split()[0]] = match.group(1).strip('\'"')
+                hostname = stripped.split()[0]
+                match = re.search(r'\sansible_host=(\S+)', stripped)
+                if '=' not in hostname and match:
+                    host_to_ip_dict[hostname] = match.group(1).strip('\'"')
     except OSError:
         logger.warning(f"Inventory file at {file_path} could not be read; defaulting host IPs to UNKNOWN.")
         return {}
@@ -97,7 +99,7 @@ def load_combined_results(file_path: str | Path) -> dict[str, Any]:
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
-        content = re.sub(r'(\w+): {', r'"\1": {', content)
+        content = re.sub(r'([\w.-]+): \{', r'"\1": {', content)
         parsed = json.loads('{' + content + '}')
     if not isinstance(parsed, dict):
         logger.warning(f"Results file at {file_path} contains JSON that is not an object; ignoring it.")

@@ -1,5 +1,14 @@
-
 ---
+- name: Clean stale temporary per-host result directories from any interrupted run
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Remove stale temporary per-host fetched result directories before running benchmarks
+      file:
+        path: "/tmp/{{ item }}_cloud_benchmarker_results"
+        state: absent
+      loop: "{{ groups['all'] }}"
+
 - name: Benchmark VPS machines
   hosts: all
   tasks:

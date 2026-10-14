@@ -55,7 +55,7 @@ def parse_combined_results(content: str) -> dict[str, Any]:
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
-        massaged = re.sub(r'(\w+): {', r'"\1": {', content)
+        massaged = re.sub(r'([\w.-]+): \{', r'"\1": {', content)
         parsed = json.loads('{' + massaged + '}')
     if not isinstance(parsed, dict):
         # Valid JSON but not an object (e.g. a bare number, list, or string):

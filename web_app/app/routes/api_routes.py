@@ -126,22 +126,23 @@ def get_benchmark_historical_csv(db: Session = Depends(get_db)) -> StreamingResp
         [{
             "datetime": entry.datetime,
             "hostname": entry.hostname,
+            "IP_address": entry.IP_address,
             "overall_score": entry.overall_score,
         } for entry in overall_data],
-        columns=["datetime", "hostname", "overall_score"],
+        columns=["datetime", "hostname", "IP_address", "overall_score"],
     )
 
     if raw_df.empty or overall_df.empty:
         # Not enough data on one side to correlate; emit whatever exists
         # (header-only when the database is empty) instead of crashing.
-        merged_df = pd.merge(raw_df, overall_df, on=["datetime", "hostname"], how="outer")
+        merged_df = pd.merge(raw_df, overall_df, on=["datetime", "hostname", "IP_address"], how="outer")
     else:
         # Merge per host with a 30s tolerance so scores can never attach to the
         # wrong machine or leak a stale overall score from an earlier run onto a
         # later run whose overall scoring step failed.
         merged_df = pd.merge_asof(
             raw_df.sort_values("datetime"),
-            overall_df.sort_values("datetime"),
+            overall_df[["datetime", "hostname", "overall_score"]].sort_values("datetime"),
             on="datetime",
             by="hostname",
             direction="nearest",

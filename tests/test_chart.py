@@ -89,3 +89,18 @@ def test_chart_traces_are_sorted_chronologically(clean_db, monkeypatch):
         pd.Timestamp(t3),
     ]
     assert list(captured_overall_dfs[0]["overall_score"]) == [25.0, 50.0, 75.0]
+
+    # Regression: a zero or negative MAX_DATA_POINTS_FOR_CHART must clamp to 1
+    # (matching scheduler.py's interval clamp) rather than passing LIMIT 0 and
+    # falsely returning NO_DATA_HTML when benchmark rows exist.
+    from web_app.app import chart as chart_module
+
+    monkeypatch.setattr(chart_module, "MAX_DATA_POINTS_FOR_CHART", 0)
+    captured_overall_dfs.clear()
+    clamped_resp = generate_benchmark_charts(clean_db)
+    assert clamped_resp.status_code == 200
+    assert "No benchmark data yet" not in bytes(clamped_resp.body).decode()
+    assert len(captured_overall_dfs) == 1
+    assert list(captured_overall_dfs[0]["datetime"]) == [pd.Timestamp(t3)]
+    assert list(captured_overall_dfs[0]["overall_score"]) == [75.0]
+

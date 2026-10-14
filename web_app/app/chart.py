@@ -98,11 +98,13 @@ def build_subscore_figure(raw_df: pd.DataFrame) -> go.Figure:
 def generate_benchmark_charts(db: Session) -> HTMLResponse:
     logger.info("Generating benchmark charts.")
 
-    # Query for the newest MAX_DATA_POINTS_FOR_CHART rows (DESC), then sort
-    # ascending by datetime so time-series traces and spline interpolation
-    # are rendered in chronological order.
-    raw_stats = db.query(RawBenchmarkSubscores).order_by(RawBenchmarkSubscores.datetime.desc()).limit(MAX_DATA_POINTS_FOR_CHART).all()
-    overall_stats = db.query(OverallNormalizedScore).order_by(OverallNormalizedScore.datetime.desc()).limit(MAX_DATA_POINTS_FOR_CHART).all()
+    # Query for the newest MAX_DATA_POINTS_FOR_CHART rows (DESC), clamped to
+    # at least 1 so a non-positive .env value cannot suppress all chart rows,
+    # then sort ascending by datetime so time-series traces and spline
+    # interpolation are rendered in chronological order.
+    chart_limit = max(1, MAX_DATA_POINTS_FOR_CHART)
+    raw_stats = db.query(RawBenchmarkSubscores).order_by(RawBenchmarkSubscores.datetime.desc()).limit(chart_limit).all()
+    overall_stats = db.query(OverallNormalizedScore).order_by(OverallNormalizedScore.datetime.desc()).limit(chart_limit).all()
 
     if not raw_stats and not overall_stats:
         return HTMLResponse(content=NO_DATA_HTML)

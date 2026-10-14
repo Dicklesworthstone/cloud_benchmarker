@@ -25,9 +25,14 @@ def test_load_combined_results_handles_every_format(tmp_path):
     p.write_text(json.dumps({"hostA": RAW_METRICS_HOST_A}))
     assert load_combined_results(str(p)) == {"hostA": RAW_METRICS_HOST_A}
 
-    legacy = 'hostA: {"cpu_speed_test__events_per_second": 100.0}'
+    legacy = (
+        'hostA: {"cpu_speed_test__events_per_second": 100.0},'
+        'vps-node-01.example.com: {"cpu_speed_test__events_per_second": 200.0}'
+    )
     p.write_text(legacy)
-    assert load_combined_results(str(p))["hostA"]["cpu_speed_test__events_per_second"] == 100.0
+    parsed_legacy = load_combined_results(str(p))
+    assert parsed_legacy["hostA"]["cpu_speed_test__events_per_second"] == 100.0
+    assert parsed_legacy["vps-node-01.example.com"]["cpu_speed_test__events_per_second"] == 200.0
 
 
 def test_run_job_safely_never_raises(monkeypatch):
@@ -481,11 +486,16 @@ def test_parse_inventory_handles_tabs_and_quoted_ips(tmp_path):
     inventory = tmp_path / "hosts.ini"
     inventory.write_text(
         'hostTab\tansible_host="10.1.2.3"\tansible_user=ubuntu\n'
-        "hostSingleQuote  ansible_host='10.1.2.4'\n"
+        "hostSingleQuote  ansible_host='10.1.2.4' ; inline semicolon comment\n"
+        "hostPrefixCollision backup_ansible_host=9.9.9.9 ansible_host=10.1.2.5 # inline hash comment\n"
+        "hostCommentedOut ansible_connection=local # ansible_host=9.9.9.9\n"
+        "[all:vars]\n"
+        "ansible_host=9.9.9.9\n"
     )
     assert parse_inventory(str(inventory)) == {
         "hostTab": "10.1.2.3",
         "hostSingleQuote": "10.1.2.4",
+        "hostPrefixCollision": "10.1.2.5",
     }
 
 

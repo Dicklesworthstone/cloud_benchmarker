@@ -100,7 +100,7 @@ def test_charts_render_with_data(api_client):
 
 
 def test_csv_preserves_raw_rows_when_overall_history_missing(api_client):
-    from web_app.app.database.data_models import RawBenchmarkSubscores
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
 
     session = _session(api_client)
     session.add(RawBenchmarkSubscores(
@@ -116,6 +116,25 @@ def test_csv_preserves_raw_rows_when_overall_history_missing(api_client):
     assert len(rows) == 1
     assert rows[0]["IP_address"] == "1.2.3.4"
     assert rows[0]["overall_score"] == ""
+
+    # Symmetric case: only OverallNormalizedScore rows exist (no RawBenchmarkSubscores).
+    # Regression: overall_df previously omitted IP_address, so the outer merge
+    # dropped the stored IP_address in the CSV export.
+    session.query(RawBenchmarkSubscores).delete()
+    session.add(OverallNormalizedScore(
+        datetime=datetime(2026, 8, 23, 12, 0, 0), hostname="hostB",
+        IP_address="10.20.30.40", overall_score=91.5,
+    ))
+    session.commit()
+
+    resp_overall_only = api_client.get("/benchmark_historical_csv/")
+    assert resp_overall_only.status_code == 200
+    rows_overall_only = list(csv.DictReader(io.StringIO(resp_overall_only.text)))
+    assert len(rows_overall_only) == 1
+    assert rows_overall_only[0]["hostname"] == "hostB"
+    assert rows_overall_only[0]["IP_address"] == "10.20.30.40"
+    assert float(rows_overall_only[0]["overall_score"]) == 91.5
+    assert rows_overall_only[0]["cpu_speed_test__events_per_second"] == ""
 
 
 def test_overall_time_filter_excludes_old_rows(api_client):

@@ -153,8 +153,11 @@ def test_parse_combined_results_accepts_all_historical_formats():
     strict = '{"hostA": {"cpu_speed_test__events_per_second": 1.0}}'
     assert scoring.parse_combined_results(strict)["hostA"]["cpu_speed_test__events_per_second"] == 1.0
 
-    legacy = 'hostA: {"cpu_speed_test__events_per_second": 1.0},hostB: {"cpu_speed_test__events_per_second": 2.0}'
-    assert set(scoring.parse_combined_results(legacy)) == {"hostA", "hostB"}
+    legacy = (
+        'hostA: {"cpu_speed_test__events_per_second": 1.0},'
+        'vps-node-01.example.com: {"cpu_speed_test__events_per_second": 2.0}'
+    )
+    assert set(scoring.parse_combined_results(legacy)) == {"hostA", "vps-node-01.example.com"}
 
     assert scoring.parse_combined_results("{}") == {}
     assert scoring.parse_combined_results("") == {}
