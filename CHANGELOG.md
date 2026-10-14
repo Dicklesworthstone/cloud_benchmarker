@@ -358,6 +358,13 @@ Introduced in the first commit:
 
 | Date | Hash | Summary |
 |------|------|---------|
+| 2026-10-14 | [`db36f55`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/db36f55c05ce002f459b82081dcb9ec8db292d38) | fix(scheduler,scoring,api,chart,playbook): harden INI comment/boundary parsing, legacy host JSON, overall-only CSV IP, chart limit clamp, and pre-run /tmp cleanup (cloud_benchmarker-z4k) |
+| 2026-10-14 | [`4052e2b`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4052e2b2e4011c617e62d61fbded687514f1ab13) | fix(scoring,scheduler,playbook): normalize custom weights over active metrics, skip zero-metric hosts, and tolerate missing inventory |
+| 2026-10-13 | [`4408bea`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4408beafa0e41261b1d5e4fb5f556f743d1c9559) | fix: reality-check hardening across ORM typing, config defaults, scorer, ingest, CSV, charts, and playbook |
+| 2026-09-22 | [`5f247cd`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/5f247cd373d36ef55d346509f8a70964ba9b52dd) | docs(agents): synchronize suite-wide rules and canonical multi-agent conventions |
+| 2026-09-21 | [`c532dfc`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/c532dfcf89e6e3c92a13698848f57f80a99ccb7e) | chore(beads): add trailing newline to metadata.json |
+| 2026-08-29 | [`c4895ed`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/c4895ed3e0104752397cdaf48738daf1ac7691c2) | docs(changelog): record 2026-08-29 work; restore Commit Index completeness |
+| 2026-08-29 | [`7c93cb7`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/7c93cb760af0079188abffd9a1f92be5017140d0) | docs(agents): refresh current-state counts (61 tests, 24 closed beads, 2026-08-29) |
 | 2026-08-29 | [`47b41dc`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/47b41dc32315a0f784591452fc1da68a421633cd) | fix: two fresh-eyes bugs from deep review of fellow-agent code |
 | 2026-08-29 | [`bff68e3`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/bff68e3a5c53857cda8edbbb0360fc0bc3967d47) | fix(deps): upgrade pytest past PYSEC-2026-1845 (8.4.2 -> 9.0.3 floor) |
 | 2026-08-29 | [`3be2235`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/3be2235310f9a87161999fe38f5889bf5e2bb153) | docs(agents): add AGENTS.md; retire the tracker doctrine bead |
