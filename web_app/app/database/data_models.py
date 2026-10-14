@@ -1,9 +1,9 @@
-from datetime import datetime
+import datetime as dt
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Column, DateTime, Float, Integer, String, UniqueConstraint
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import DateTime, Float, Integer, String, UniqueConstraint
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -26,30 +26,30 @@ METRIC_COLUMNS = [
 
 class RawBenchmarkSubscores(Base):
     __tablename__ = 'raw_benchmark_subscores'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    datetime = Column(DateTime, index=True)
-    hostname = Column(String, index=True)
-    IP_address = Column(String, index=True)
-    cpu_speed_test__events_per_second = Column(Float)
-    fileio_test__reads_per_second = Column(Float)
-    memory_speed_test__MiB_transferred = Column(Float)
-    mutex_test__avg_latency = Column(Float)
-    threads_test__avg_latency = Column(Float)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    datetime: Mapped[dt.datetime] = mapped_column(DateTime, index=True, nullable=True)
+    hostname: Mapped[str] = mapped_column(String, index=True, nullable=True)
+    IP_address: Mapped[str] = mapped_column(String, index=True, nullable=True)
+    cpu_speed_test__events_per_second: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    fileio_test__reads_per_second: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    memory_speed_test__MiB_transferred: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    mutex_test__avg_latency: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    threads_test__avg_latency: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     __table_args__ = (UniqueConstraint('datetime', 'hostname', name='uix_1'),)
 
 class OverallNormalizedScore(Base):
     __tablename__ = 'overall_normalized_score'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    datetime = Column(DateTime, index=True)
-    hostname = Column(String, index=True)
-    IP_address = Column(String, index=True)
-    overall_score = Column(Float)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    datetime: Mapped[dt.datetime] = mapped_column(DateTime, index=True, nullable=True)
+    hostname: Mapped[str] = mapped_column(String, index=True, nullable=True)
+    IP_address: Mapped[str] = mapped_column(String, index=True, nullable=True)
+    overall_score: Mapped[float] = mapped_column(Float, nullable=True)
     __table_args__ = (UniqueConstraint('datetime', 'hostname', name='uix_2'),)
 
 # Pydantic Response Models
 class HistoricalRawBenchmarkSubscoresResponse(BaseModel):
     id: Optional[int]
-    datetime: datetime
+    datetime: dt.datetime
     hostname: str
     IP_address: str
     # The playbook omits metrics from failed sysbench tests by design, so
@@ -65,7 +65,7 @@ class HistoricalRawBenchmarkSubscoresResponse(BaseModel):
 
 class HistoricalOverallNormalizedScoresResponse(BaseModel):
     id: Optional[int]
-    datetime: datetime
+    datetime: dt.datetime
     hostname: str
     IP_address: str
     overall_score: float

@@ -122,3 +122,57 @@ def test_init_db_creates_all_model_tables(clean_db):
     init_db()
     tables = set(inspect(engine).get_table_names())
     assert {"raw_benchmark_subscores", "overall_normalized_score"} <= tables
+
+
+def test_documented_config_defaults_work_without_env_or_dotenv(tmp_path):
+    # Regression: README.md documents default values for all four .env knobs,
+    # but the decouple.config() calls had no default= arguments, so launching
+    # without .env (or omitting any optional knob from .env) crashed at import
+    # time with UndefinedValueError.
+    import os
+    import subprocess
+    import sys
+    from datetime import datetime
+
+    from sqlalchemy.sql.elements import ColumnElement
+
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.database.init_db import _REPO_ROOT
+
+    clean_env = {
+        k: v for k, v in os.environ.items()
+        if k not in {
+            "SQLALCHEMY_ENGINE_CONNECTION_STRING",
+            "PLAYBOOK_RUN_INTERVAL_IN_MINUTES",
+            "ANSIBLE_INVENTORY_FILE_PATH",
+            "MAX_DATA_POINTS_FOR_CHART",
+        }
+    }
+    clean_env["HOME"] = str(tmp_path)
+    clean_env["PYTHONPATH"] = str(_REPO_ROOT)
+
+    probe = (
+        "from web_app.app.database import init_db\n"
+        "from web_app.app.utils import scheduler\n"
+        "from web_app.app import chart\n"
+        "assert init_db.SQLALCHEMY_ENGINE_CONNECTION_STRING.endswith('/cloud_benchmarker.sqlite')\n"
+        "assert scheduler.PLAYBOOK_RUN_INTERVAL_IN_MINUTES == 360\n"
+        "assert scheduler.ANSIBLE_INVENTORY_FILE_PATH == 'my_ansible_inventory_file.ini'\n"
+        "assert chart.MAX_DATA_POINTS_FOR_CHART == 1000\n"
+    )
+    res = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=str(tmp_path),
+        env=clean_env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert res.returncode == 0, res.stderr
+
+    # Verify SQLAlchemy 2.0 Mapped columns produce ColumnElement expressions
+    # on class-level comparisons (fixing the SQLAlchemy 2.1 mypy Never->bool regression).
+    cutoff = datetime(2026, 10, 13, 12, 0, 0)
+    assert isinstance(RawBenchmarkSubscores.datetime >= cutoff, ColumnElement)
+    assert isinstance(OverallNormalizedScore.datetime >= cutoff, ColumnElement)
+

@@ -17,7 +17,7 @@ from web_app.app.logger_config import setup_logger
 warnings.filterwarnings('ignore', 'The behavior of DatetimeProperties.to_pydatetime is deprecated')
 
 logger = setup_logger()
-MAX_DATA_POINTS_FOR_CHART = config("MAX_DATA_POINTS_FOR_CHART", cast=int)
+MAX_DATA_POINTS_FOR_CHART = config("MAX_DATA_POINTS_FOR_CHART", default=1000, cast=int)
 
 NO_DATA_HTML = '''
 <html>
@@ -34,7 +34,7 @@ def build_subscore_figure(raw_df: pd.DataFrame) -> go.Figure:
 
     # Adding traces: one line per (IP address, metric) combination.
     for ip in raw_df['IP_address'].unique():
-        filtered_df = raw_df[raw_df['IP_address'] == ip]
+        filtered_df = raw_df[raw_df['IP_address'] == ip].sort_values('datetime', kind='mergesort')
         for col in METRIC_COLUMNS:
             subscore_fig.add_trace(
                 go.Scatter(x=filtered_df['datetime'], y=filtered_df[col], mode='lines', name=f"{ip} - {col}",
@@ -98,7 +98,9 @@ def build_subscore_figure(raw_df: pd.DataFrame) -> go.Figure:
 def generate_benchmark_charts(db: Session) -> HTMLResponse:
     logger.info("Generating benchmark charts.")
 
-    # Query for raw benchmark subscores
+    # Query for the newest MAX_DATA_POINTS_FOR_CHART rows (DESC), then sort
+    # ascending by datetime so time-series traces and spline interpolation
+    # are rendered in chronological order.
     raw_stats = db.query(RawBenchmarkSubscores).order_by(RawBenchmarkSubscores.datetime.desc()).limit(MAX_DATA_POINTS_FOR_CHART).all()
     overall_stats = db.query(OverallNormalizedScore).order_by(OverallNormalizedScore.datetime.desc()).limit(MAX_DATA_POINTS_FOR_CHART).all()
 
@@ -110,12 +112,14 @@ def generate_benchmark_charts(db: Session) -> HTMLResponse:
         raw_stats_dict = [{column.name: getattr(s, column.name) for column in RawBenchmarkSubscores.__table__.columns} for s in raw_stats]
         raw_df = pd.DataFrame(raw_stats_dict)
         raw_df['datetime'] = pd.to_datetime(raw_df['datetime'])
+        raw_df = raw_df.sort_values('datetime', kind='mergesort').reset_index(drop=True)
         figures.append(build_subscore_figure(raw_df))
 
     if overall_stats:
         overall_stats_dict = [{column.name: getattr(s, column.name) for column in OverallNormalizedScore.__table__.columns} for s in overall_stats]
         overall_df = pd.DataFrame(overall_stats_dict)
         overall_df['datetime'] = pd.to_datetime(overall_df['datetime'])
+        overall_df = overall_df.sort_values('datetime', kind='mergesort').reset_index(drop=True)
         figures.append(px.line(overall_df, x='datetime', y='overall_score', color='hostname',
                             labels={'overall_score': 'Overall Score', 'datetime': 'Datetime', 'hostname': 'Machine'},
                             title='Overall Normalized Scores Over Time', markers=True, line_shape='spline'))

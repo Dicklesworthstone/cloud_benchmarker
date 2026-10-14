@@ -197,3 +197,32 @@ def test_raw_endpoint_serves_partially_failed_host_runs(api_client):
     assert fields[8] == ""
     charts_resp = api_client.get("/benchmark_charts/")
     assert charts_resp.status_code == 200
+
+
+def test_csv_does_not_leak_stale_overall_score_across_runs(api_client):
+    # Regression: pd.merge_asof(..., direction="nearest") without a tolerance
+    # attached a 5-day-old overall_score from Run 1 onto Run 2 when Run 2
+    # ingested raw subscores without an overall score.
+    from web_app.app.database.data_models import RawBenchmarkSubscores
+
+    session = _session(api_client)
+    t1 = datetime(2026, 8, 20, 12, 0, 0)
+    t2 = datetime(2026, 8, 25, 12, 0, 0)
+
+    # Run 1 has both raw and overall scores (87.5)
+    seed_benchmark_rows(session, t1, {"hostA": RAW_METRICS["hostA"]})
+    # Run 2 (5 days later) has only raw subscores (overall scoring failed)
+    session.add(RawBenchmarkSubscores(
+        datetime=t2, hostname="hostA", IP_address="1.2.3.4",
+        **RAW_METRICS["hostA"][0],
+    ))
+    session.commit()
+
+    resp = api_client.get("/benchmark_historical_csv/")
+    assert resp.status_code == 200
+    rows = list(csv.DictReader(io.StringIO(resp.text)))
+    assert len(rows) == 2
+    assert rows[0]["datetime"] == "2026-08-20 12:00:00"
+    assert float(rows[0]["overall_score"]) == 87.5
+    assert rows[1]["datetime"] == "2026-08-25 12:00:00"
+    assert rows[1]["overall_score"] == ""

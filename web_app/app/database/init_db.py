@@ -31,7 +31,9 @@ def _repo_anchored_sqlite_url(url: str) -> str:
     return f"{scheme}{_REPO_ROOT / path_part}{sep}{query}"
 
 
-SQLALCHEMY_ENGINE_CONNECTION_STRING = _repo_anchored_sqlite_url(config("SQLALCHEMY_ENGINE_CONNECTION_STRING", cast=str))
+SQLALCHEMY_ENGINE_CONNECTION_STRING = _repo_anchored_sqlite_url(
+    config("SQLALCHEMY_ENGINE_CONNECTION_STRING", default="sqlite:///cloud_benchmarker.sqlite", cast=str)
+)
 engine = create_engine(SQLALCHEMY_ENGINE_CONNECTION_STRING)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

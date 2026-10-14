@@ -136,13 +136,16 @@ def get_benchmark_historical_csv(db: Session = Depends(get_db)) -> StreamingResp
         # (header-only when the database is empty) instead of crashing.
         merged_df = pd.merge(raw_df, overall_df, on=["datetime", "hostname"], how="outer")
     else:
-        # Merge per host so scores can never attach to the wrong machine.
+        # Merge per host with a 30s tolerance so scores can never attach to the
+        # wrong machine or leak a stale overall score from an earlier run onto a
+        # later run whose overall scoring step failed.
         merged_df = pd.merge_asof(
             raw_df.sort_values("datetime"),
             overall_df.sort_values("datetime"),
             on="datetime",
             by="hostname",
             direction="nearest",
+            tolerance=pd.Timedelta(seconds=30),
         )
 
     csv_file = StringIO()

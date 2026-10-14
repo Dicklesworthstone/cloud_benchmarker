@@ -12,6 +12,7 @@
 *.vacuum-wal-cert*
 # fsqlite 0.3.6+ engine-upgrade bookkeeping written beside the database
 *.fsqlite-migration-state
+.br-wal-index*/
 
 # Lock files
 .write.lock

@@ -15,6 +15,7 @@ neutral 50 instead of a misleading perfect score.
 
 import datetime
 import json
+import math
 import os
 import re
 from collections.abc import Mapping
@@ -29,6 +30,11 @@ LOWER_IS_BETTER_METRICS = frozenset({
     "mutex_test__avg_latency",
     "threads_test__avg_latency",
 })
+
+
+def _is_valid_metric_value(value: Any) -> bool:
+    """Return True iff ``value`` is a finite real number (excluding bool)."""
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
 
 
 def parse_combined_results(content: str) -> dict[str, Any]:
@@ -66,18 +72,21 @@ def calculate_overall_performance(data: Mapping[str, Any], weighting: str = "equ
     weights are normalized to sum to 1 and must cover every metric present
     in ``data``.
     """
-    if not data:
+    valid_hosts: dict[str, Mapping[str, Any]] = {
+        host: scores for host, scores in data.items() if isinstance(scores, Mapping)
+    }
+    if not valid_hosts:
         return {}
 
     overall_scores: dict[str, list[float]] = {}
-    host_names = list(data.keys())
+    host_names = list(valid_hosts.keys())
     # Hosts may report different metric subsets (the playbook skips failed
-    # tests per host), so take an ordered union: first host's order, then
-    # any extra metrics in encounter order.
-    metrics = list(data[host_names[0]].keys())
-    for host in host_names[1:]:
-        for metric in data[host]:
-            if metric not in metrics:
+    # tests per host), so take an ordered union of metrics that carry a
+    # finite numeric observation on at least one host.
+    metrics: list[str] = []
+    for host in host_names:
+        for metric, raw_val in valid_hosts[host].items():
+            if _is_valid_metric_value(raw_val) and metric not in metrics:
                 metrics.append(metric)
 
     weights: Mapping[str, float] = {}
@@ -95,19 +104,26 @@ def calculate_overall_performance(data: Mapping[str, Any], weighting: str = "equ
     elif weighting != "equal_weighting":
         raise ValueError(f"Unknown weighting mode: {weighting}")
 
+    if not metrics:
+        return {host: NEUTRAL_SCORE for host in host_names}
+
     for metric in metrics:
-        reported = [data[host][metric] for host in host_names if metric in data[host]]
+        reported = [
+            float(valid_hosts[host][metric])
+            for host in host_names
+            if metric in valid_hosts[host] and _is_valid_metric_value(valid_hosts[host][metric])
+        ]
         max_value, min_value = max(reported), min(reported)
         for host in host_names:
-            if metric not in data[host]:
-                # Metric not reported by this host: no comparative signal.
+            if metric not in valid_hosts[host] or not _is_valid_metric_value(valid_hosts[host][metric]):
+                # Metric not reported (or invalid/None) on this host: no comparative signal.
                 normalized = NEUTRAL_SCORE
             elif max_value == min_value:
                 normalized = NEUTRAL_SCORE
             elif metric in LOWER_IS_BETTER_METRICS:
-                normalized = ((max_value - data[host][metric]) / (max_value - min_value)) * 100
+                normalized = ((max_value - float(valid_hosts[host][metric])) / (max_value - min_value)) * 100
             else:
-                normalized = ((data[host][metric] - min_value) / (max_value - min_value)) * 100
+                normalized = ((float(valid_hosts[host][metric]) - min_value) / (max_value - min_value)) * 100
             overall_scores.setdefault(host, []).append(normalized)
 
     result = {}
@@ -130,15 +146,11 @@ def calculate_overall_performance(data: Mapping[str, Any], weighting: str = "equ
     return {k: v for k, v in sorted(scored.items(), key=lambda item: item[1], reverse=True)}
 
 
-if __name__ == "__main__":
+def main() -> None:
     input_file_path = os.path.join(os.path.expanduser("~"), COMBINED_INPUT_FILENAME)
     print(f'Now loading input file {input_file_path}...')
     with open(input_file_path, 'r', encoding='utf-8') as f:
         data = parse_combined_results(f.read())
-    if not data:
-        print(f"No benchmark results found in {input_file_path}; nothing to score.")
-        raise SystemExit(1)
-
     custom_weights = {
         "cpu_speed_test__events_per_second": 2.0,
         "fileio_test__reads_per_second": 1.0,
@@ -147,6 +159,9 @@ if __name__ == "__main__":
         "threads_test__avg_latency": 0.5,
     }
     sorted_scores = calculate_overall_performance(data, weighting="custom", custom_weights=custom_weights)
+    if not sorted_scores:
+        print(f"No benchmark results found in {input_file_path}; nothing to score.")
+        raise SystemExit(1)
     timestamp = datetime.datetime.now().strftime('%m_%d_%Y__%H_%M_%S')
     output_directory = os.path.join(os.path.expanduser("~"), OUTPUT_DIR_NAME)
     os.makedirs(output_directory, exist_ok=True)
@@ -162,3 +177,7 @@ if __name__ == "__main__":
     os.replace(tmp_output, output_file)
     print(f'Overall scores written to {output_file}.')
     print('Final Scores:', sorted_scores)
+
+
+if __name__ == "__main__":
+    main()

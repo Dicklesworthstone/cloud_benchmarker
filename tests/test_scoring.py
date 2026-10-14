@@ -1,15 +1,20 @@
 import importlib.util
+import math
 import os
+import runpy
+import sys
 
 import pytest
 
 from tests.conftest import _REPO_ROOT
 
+_SCRIPT_PATH = os.path.join(_REPO_ROOT, "script_to_generate_overall_benchmark_scores_from_subscores.py")
 _SPEC = importlib.util.spec_from_file_location(
-    "cb_scoring",
-    os.path.join(_REPO_ROOT, "script_to_generate_overall_benchmark_scores_from_subscores.py"),
+    "script_to_generate_overall_benchmark_scores_from_subscores",
+    _SCRIPT_PATH,
 )
 scoring = importlib.util.module_from_spec(_SPEC)
+sys.modules["script_to_generate_overall_benchmark_scores_from_subscores"] = scoring
 _SPEC.loader.exec_module(scoring)
 
 HOST_A = {
@@ -98,6 +103,9 @@ def test_custom_weights_are_normalized_and_missing_weight_rejected():
     assert list(scores) == ["hostA", "hostB"]
     with pytest.raises(ValueError):
         scoring.calculate_overall_performance({"h": HOST_A}, weighting="custom",
+                                              custom_weights=None)
+    with pytest.raises(ValueError):
+        scoring.calculate_overall_performance({"h": HOST_A}, weighting="custom",
                                               custom_weights={"cpu_speed_test__events_per_second": 1.0})
     with pytest.raises(ValueError):
         scoring.calculate_overall_performance({"h": HOST_A}, weighting="custom",
@@ -132,6 +140,54 @@ def test_hosts_with_missing_metrics_score_neutrally_for_gaps():
     # fileio: only "full" reports it -> no comparison signal -> neutral 50.
     assert scores["full"] == pytest.approx(75.0)
     assert scores["partial"] == pytest.approx(25.0)  # worst cpu (0) + neutral fileio (50)
+
+
+def test_hosts_with_empty_metric_dicts_score_neutral_50():
+    # Regression: {"hostA": {}} or {"hostA": {}, "hostB": {}} previously raised
+    # ZeroDivisionError: division by zero because overall_scores remained {}.
+    assert scoring.calculate_overall_performance({"hostA": {}}) == {"hostA": 50.0}
+    assert scoring.calculate_overall_performance({"hostA": {}, "hostB": {}}) == {
+        "hostA": 50.0,
+        "hostB": 50.0,
+    }
+
+
+def test_scorer_ignores_non_mapping_hosts_and_invalid_metric_values():
+    # Regression: non-dict host values or None/bool/string/NaN/Inf metric values
+    # previously crashed calculate_overall_performance with TypeError/AttributeError
+    # or poisoned scores with NaN.
+    assert scoring.calculate_overall_performance({"bad1": None, "bad2": "str", "bad3": [1, 2]}) == {}
+
+    data = {
+        "hostA": {
+            "cpu_speed_test__events_per_second": 200.0,
+            "fileio_test__reads_per_second": None,
+            "memory_speed_test__MiB_transferred": True,
+            "mutex_test__avg_latency": "corrupt",
+            "threads_test__avg_latency": math.nan,
+        },
+        "hostB": {
+            "cpu_speed_test__events_per_second": 100.0,
+            "fileio_test__reads_per_second": math.inf,
+            "memory_speed_test__MiB_transferred": -math.inf,
+        },
+        "corrupt_host": "not-a-dict",
+    }
+    scores = scoring.calculate_overall_performance(data)
+    assert set(scores) == {"hostA", "hostB"}
+    # Only cpu_speed_test__events_per_second has valid finite numbers on both hosts.
+    assert scores["hostA"] == 100.0
+    assert scores["hostB"] == 0.0
+
+    # If a valid metric is present on hostA (and hostC), while hostB has None for it,
+    # hostB receives the neutral 50.0 on that metric rather than crashing.
+    mixed = {
+        "hostA": {"cpu_speed_test__events_per_second": 200.0},
+        "hostB": {"cpu_speed_test__events_per_second": None},
+        "hostC": {"cpu_speed_test__events_per_second": 100.0},
+    }
+    mixed_scores = scoring.calculate_overall_performance(mixed)
+    assert mixed_scores == {"hostA": 100.0, "hostB": 50.0, "hostC": 0.0}
 
 
 def test_parser_fuzz_returns_dicts_or_raises_json_decode_error():
@@ -181,16 +237,12 @@ def test_scorer_fuzz_scores_always_within_zero_to_100():
             assert 0.0 <= value <= 100.0, (host, value, data)
 
 
-def test_main_cli_path_writes_sorted_output_file(tmp_path):
-    # The playbook invokes this script as a standalone python3 process
-    # against HOME-based paths -- the production invocation -- which the
-    # importlib-based tests above never exercise. Run it for real.
+def test_main_cli_path_writes_sorted_output_file(tmp_path, monkeypatch):
+    # Exercise both the in-process __main__ path (for coverage tracking) and the
+    # standalone subprocess CLI invocation used by the playbook.
     import json
     import subprocess
-    import sys
 
-    script_path = os.path.join(
-        _REPO_ROOT, "script_to_generate_overall_benchmark_scores_from_subscores.py")
     home = tmp_path / "home"
     home.mkdir()
     (home / "combined_cloud_benchmarker_results.json").write_text(json.dumps({
@@ -210,8 +262,13 @@ def test_main_cli_path_writes_sorted_output_file(tmp_path):
         },
     }))
 
+    monkeypatch.setenv("HOME", str(home))
+    runpy.run_path(_SCRIPT_PATH, run_name="__main__")
+    for f in (home / "benchmark_result_output_files").glob("*.json"):
+        f.unlink()
+
     result = subprocess.run(
-        [sys.executable, script_path],
+        [sys.executable, _SCRIPT_PATH],
         env={**os.environ, "HOME": str(home)},
         capture_output=True, text=True, timeout=60,
     )
@@ -234,18 +291,20 @@ def test_main_cli_path_writes_sorted_output_file(tmp_path):
     assert scores["fast_host"] == 100.0
 
 
-def test_main_cli_exits_nonzero_when_no_data(tmp_path):
+def test_main_cli_exits_nonzero_when_no_data(tmp_path, monkeypatch):
     import subprocess
-    import sys
 
-    script_path = os.path.join(
-        _REPO_ROOT, "script_to_generate_overall_benchmark_scores_from_subscores.py")
     home = tmp_path / "home"
     home.mkdir()
     (home / "combined_cloud_benchmarker_results.json").write_text("{}")
 
+    monkeypatch.setenv("HOME", str(home))
+    with pytest.raises(SystemExit) as excinfo:
+        scoring.main()
+    assert excinfo.value.code == 1
+
     result = subprocess.run(
-        [sys.executable, script_path],
+        [sys.executable, _SCRIPT_PATH],
         env={**os.environ, "HOME": str(home)},
         capture_output=True, text=True, timeout=60,
     )

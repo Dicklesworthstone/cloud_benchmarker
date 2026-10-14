@@ -473,3 +473,130 @@ def test_reingest_with_changed_inventory_ip_updates_instead_of_crashing(clean_db
     assert len(raw_rows) == 1 and len(overall_rows) == 1
     assert raw_rows[0].IP_address == "2.2.2.2"
     assert overall_rows[0].IP_address == "2.2.2.2"
+
+
+def test_parse_inventory_handles_tabs_and_quoted_ips(tmp_path):
+    from web_app.app.utils.scheduler import parse_inventory
+
+    inventory = tmp_path / "hosts.ini"
+    inventory.write_text(
+        'hostTab\tansible_host="10.1.2.3"\tansible_user=ubuntu\n'
+        "hostSingleQuote  ansible_host='10.1.2.4'\n"
+    )
+    assert parse_inventory(str(inventory)) == {
+        "hostTab": "10.1.2.3",
+        "hostSingleQuote": "10.1.2.4",
+    }
+
+
+def test_ingest_data_rejects_metadata_keys_and_invalid_metric_values(clean_db):
+    # Regression: raw_columns previously used RawBenchmarkSubscores.__table__.columns,
+    # which allowed metadata column names ("hostname", "id", "datetime", "IP_address")
+    # through unknown_keys and crashed with TypeError on keyword collision; and
+    # non-numeric strings / booleans / NaN / Inf in raw or overall scores crashed commit
+    # or poisoned DB rows with NaN (500ing /data/raw/ and /data/overall/).
+    import math
+
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.utils.scheduler import ingest_data
+
+    now = datetime(2026, 8, 30, 12, 0, 0)
+    raw_data = {
+        "goodHost": {
+            "cpu_speed_test__events_per_second": 150.0,
+            "fileio_test__reads_per_second": None,
+        },
+        "metaCollisionHost": {
+            "cpu_speed_test__events_per_second": 100.0,
+            "hostname": "evil",
+        },
+        "idCollisionHost": {
+            "cpu_speed_test__events_per_second": 100.0,
+            "id": 999,
+        },
+        "stringMetricHost": {
+            "cpu_speed_test__events_per_second": "not-a-float",
+        },
+        "boolMetricHost": {
+            "cpu_speed_test__events_per_second": True,
+        },
+        "nanMetricHost": {
+            "cpu_speed_test__events_per_second": math.nan,
+        },
+        "infMetricHost": {
+            "cpu_speed_test__events_per_second": math.inf,
+        },
+        "nanOverallHost": dict(RAW_METRICS_HOST_A),
+        "boolOverallHost": dict(RAW_METRICS_HOST_A),
+    }
+    overall_data = {
+        "goodHost": 88.0,
+        "nanOverallHost": math.nan,
+        "boolOverallHost": False,
+    }
+    host_to_ip = {"goodHost": "1.1.1.1", "nanOverallHost": "1.1.1.2", "boolOverallHost": "1.1.1.3"}
+
+    ingest_data(clean_db, raw_data, overall_data, now, host_to_ip)
+
+    raw_rows = {r.hostname: r for r in clean_db.query(RawBenchmarkSubscores).all()}
+    assert set(raw_rows) == {"goodHost", "nanOverallHost", "boolOverallHost"}
+    assert raw_rows["goodHost"].cpu_speed_test__events_per_second == 150.0
+    assert raw_rows["goodHost"].fileio_test__reads_per_second is None
+
+    overall_rows = {r.hostname: r.overall_score for r in clean_db.query(OverallNormalizedScore).all()}
+    assert overall_rows == {"goodHost": 88.0}
+
+
+def test_reingest_clears_omitted_metric_columns_to_none(clean_db):
+    # Regression: re-ingesting a host at the same (datetime, hostname) with a
+    # smaller subset of metrics left stale values on the omitted columns.
+    from web_app.app.database.data_models import RawBenchmarkSubscores
+    from web_app.app.utils.scheduler import ingest_data
+
+    now = datetime(2026, 8, 30, 13, 0, 0)
+    ingest_data(clean_db, {"hostA": dict(RAW_METRICS_HOST_A)}, {}, now, {"hostA": "1.2.3.4"})
+    ingest_data(
+        clean_db,
+        {"hostA": {"cpu_speed_test__events_per_second": 250.0}},
+        {},
+        now,
+        {"hostA": "1.2.3.4"},
+    )
+
+    row = clean_db.query(RawBenchmarkSubscores).filter_by(hostname="hostA").one()
+    assert row.cpu_speed_test__events_per_second == 250.0
+    assert row.fileio_test__reads_per_second is None
+    assert row.memory_speed_test__MiB_transferred is None
+    assert row.mutex_test__avg_latency is None
+    assert row.threads_test__avg_latency is None
+
+
+def test_job_degrades_gracefully_on_corrupt_or_non_dict_overall_file(clean_db, tmp_path, monkeypatch):
+    # Regression: a corrupt or non-object JSON file in benchmark_result_output_files
+    # crashed job() with JSONDecodeError/TypeError before raw subscores could be ingested.
+    import os
+    import time
+
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.utils import scheduler
+
+    overall_dir = tmp_path / "benchmark_result_output_files"
+    overall_dir.mkdir()
+    overall_file = overall_dir / "combined_cloud_benchmarker_results__overall_score_sorted__bad.json"
+    combined = tmp_path / "combined_cloud_benchmarker_results.json"
+    combined.write_text(json.dumps({"hostA": dict(RAW_METRICS_HOST_A)}))
+
+    monkeypatch.setattr(scheduler, "initial_setup", False)
+    monkeypatch.setattr(scheduler, "NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH", str(overall_dir) + "/")
+    monkeypatch.setattr(scheduler, "COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH", str(combined))
+    monkeypatch.setattr(scheduler, "should_run_job", lambda files: False)
+    monkeypatch.setattr(scheduler, "parse_inventory", lambda path: {"hostA": "1.2.3.4"})
+
+    for payload in ("{truncated json", "[1, 2, 3]"):
+        overall_file.write_text(payload)
+        future = time.time() + 60
+        os.utime(overall_file, (future, future))
+        scheduler.job()
+
+    assert clean_db.query(RawBenchmarkSubscores).count() == 1
+    assert clean_db.query(OverallNormalizedScore).count() == 0

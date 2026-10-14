@@ -18,6 +18,7 @@
         set -e
         output=$(sysbench cpu --threads=4 run)
         cpu_speed=$(echo "$output" | grep "events per second:" | awk '{print $4}')
+        [ -n "$cpu_speed" ]
         echo "{\"cpu_speed_test__events_per_second\": $cpu_speed}"
       register: cpu_result
       ignore_errors: yes
@@ -34,6 +35,7 @@
         set -e
         output=$(sysbench memory --memory-block-size=1K --memory-total-size=100G run)
         memory_speed=$(echo "$output" | grep "MiB transferred (" | awk '{print $1}')
+        [ -n "$memory_speed" ]
         echo "{\"memory_speed_test__MiB_transferred\": $memory_speed}"
       register: memory_result
       ignore_errors: yes
@@ -48,10 +50,11 @@
     - name: Run FileIO sysbench test and collect key metrics
       shell: |
         set -e
+        trap 'sysbench fileio cleanup >/dev/null 2>&1 || true' EXIT
         sysbench fileio prepare >/dev/null 2>&1
         output=$(sysbench fileio --file-test-mode=rndrw run)
-        sysbench fileio cleanup >/dev/null 2>&1
         fileio_reads=$(echo "$output" | grep "reads/s:" | awk '{print $2}')
+        [ -n "$fileio_reads" ]
         echo "{\"fileio_test__reads_per_second\": $fileio_reads}"
       register: fileio_result
       ignore_errors: yes
@@ -68,6 +71,7 @@
         set -e
         output=$(sysbench mutex --mutex-locks=10000 --mutex-num=128 run)
         mutex_avg=$(echo "$output" | grep "avg:" | awk '{print $2}' | head -1)
+        [ -n "$mutex_avg" ]
         echo "{\"mutex_test__avg_latency\": $mutex_avg}"
       register: mutex_result
       ignore_errors: yes
@@ -84,6 +88,7 @@
         set -e
         output=$(sysbench threads --threads=4 run)
         threads_avg=$(echo "$output" | grep "avg:" | awk '{print $2}' | head -1)
+        [ -n "$threads_avg" ]
         echo "{\"threads_test__avg_latency\": $threads_avg}"
       register: threads_result
       ignore_errors: yes
@@ -129,6 +134,12 @@
       copy:
         content: "{{ combined_out.stdout }}"
         dest: "{{ lookup('env', 'HOME') }}/combined_cloud_benchmarker_results.json"
+
+    - name: Remove temporary per-host fetched result directories
+      file:
+        path: "/tmp/{{ item }}_cloud_benchmarker_results"
+        state: absent
+      loop: "{{ groups['all'] }}"
 
 - name: Copy and execute Python script
   hosts: localhost

@@ -8,6 +8,36 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 ---
 
+## 2026-10-13 -- Reality-Check Hardening: SQLAlchemy 2.1 Typing, Config Defaults, Scoring & Ingest Isolation, CSV/Chart/Playbook Integrity
+
+### SQLAlchemy 2.0 `Mapped`/`mapped_column` Typing & Zero-Config Startup (`web_app/app/database/data_models.py`, `init_db.py`, `scheduler.py`, `chart.py`, `.gitignore`)
+
+- **Fixed `mypy` `[arg-type]` errors under `sqlalchemy 2.1.4`** (`cloud_benchmarker-4gr`): SQLAlchemy 2.1 tightened `Column.__get__(None, owner)` to `Never` on `DeclarativeBase` subclasses that use legacy `Column(...)` declarations instead of `Mapped[...]` / `mapped_column(...)`, causing `RawBenchmarkSubscores.datetime >= cutoff_date` and `OverallNormalizedScore.datetime >= cutoff_date` to evaluate to `bool` and fail `mypy` at `web_app/app/routes/api_routes.py:62` and `:83`. Migrated both ORM models to `Mapped[...]` and `mapped_column(...)`.
+- **Enforced documented `README.md` `.env` defaults in code**: `.env` is untracked (`796fa97`), and all four `decouple.config(...)` calls omitted `default=...`, so starting `uvicorn` before copying `.env.example` crashed at import time with `decouple.UndefinedValueError`. Added the documented defaults (`sqlite:///cloud_benchmarker.sqlite`, `my_ansible_inventory_file.ini`, `360`, `1000`) to `init_db.py`, `scheduler.py`, and `chart.py`.
+- Added `old_logs/` to `.gitignore` so rotated log archives do not dirty the working tree.
+
+### Scoring Engine Hardening & Coverage Registration (`script_to_generate_overall_benchmark_scores_from_subscores.py`, `tests/test_scoring.py`)
+
+- **Hardened `calculate_overall_performance` against malformed host entries, `None`/boolean/non-finite metric values, and empty host metric dicts** (`cloud_benchmarker-b0m`): non-mapping host values are ignored, metric values are validated via `_is_valid_metric_value` (finite `int`/`float` excluding `bool`), unreported/invalid metrics contribute the documented `NEUTRAL_SCORE` (`50.0`), and hosts whose metric dicts are empty (`{}`) receive `50.0` instead of raising `ZeroDivisionError`.
+- Extracted `main()` in the scoring script and registered `sys.modules["script_to_generate_overall_benchmark_scores_from_subscores"] = scoring` in `tests/test_scoring.py`, achieving 100% statement coverage (93/93 statements) with zero `CoverageWarning`.
+
+### Scheduler Ingest Isolation & Inventory Parsing (`web_app/app/utils/scheduler.py`)
+
+- **Closed ingest isolation bypasses** (`cloud_benchmarker-kgv`):
+  - Validated raw subscore keys against `set(METRIC_COLUMNS)` instead of `RawBenchmarkSubscores.__table__.columns.keys()`, preventing a malformed host dict containing metadata column names (`"hostname"`, `"id"`, `"datetime"`, `"IP_address"`) from raising `TypeError` and aborting the batch.
+  - Validated raw and overall score values with `_is_valid_number` (rejecting non-numeric strings, booleans, `NaN`, and `±Inf` while preserving `None` for omitted raw metrics) so corrupt values cannot abort `db.commit()` with `StatementError` or poison SQLite rows with `NaN` (which permanently 500s `/data/raw/` and `/data/overall/`).
+  - Re-ingesting an existing `(datetime, hostname)` row now resets omitted `METRIC_COLUMNS` to `None` instead of retaining stale values from an earlier write.
+  - Guarded `latest_overall_file` loading in `job()` against `(OSError, json.JSONDecodeError)` and non-dict JSON so a corrupt overall file degrades to raw-only ingestion instead of aborting the tick.
+  - Hardened `parse_inventory` to split hostnames on arbitrary whitespace (including tabs) and strip surrounding quotes from `ansible_host` values.
+
+### Historical CSV Merge Tolerance, Chronological Chart Traces & Playbook Hardening (`api_routes.py`, `chart.py`, `benchmark-playbook.yml`)
+
+- **Bounded `pd.merge_asof` with `tolerance=pd.Timedelta(seconds=30)`** (`cloud_benchmarker-ybs`): prevents a run whose overall scoring step failed from inheriting a stale `overall_score` from a previous run days or hours earlier in `/benchmark_historical_csv/`.
+- **Sorted chart DataFrames chronologically ascending by `datetime`**: `generate_benchmark_charts` queries `ORDER BY datetime DESC LIMIT MAX_DATA_POINTS_FOR_CHART` to select the newest points, then sorts `raw_df` and `overall_df` ascending by `datetime` before building Plotly line/spline traces.
+- **Hardened `benchmark-playbook.yml`**: added `[ -n "$..." ]` non-empty metric guards to all 5 sysbench shell tasks, added `trap 'sysbench fileio cleanup >/dev/null 2>&1 || true' EXIT` to the FileIO task so temporary files are always cleaned up on failure, and removed `/tmp/{{ item }}_cloud_benchmarker_results` after combining results.
+
+---
+
 ## 2026-08-29 -- Fresh-Eyes Fixes, I/O Hardening, and Governance
 
 ### API and Ingest Correctness (`web_app/app/database/data_models.py`, `web_app/app/utils/scheduler.py`)

@@ -1,5 +1,6 @@
 import glob
 import json
+import math
 import os
 import re
 import subprocess
@@ -14,13 +15,21 @@ import schedule
 from decouple import config as decouple_config
 from sqlalchemy.orm import Session
 
-from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+from web_app.app.database.data_models import (
+    METRIC_COLUMNS,
+    OverallNormalizedScore,
+    RawBenchmarkSubscores,
+)
 from web_app.app.database.init_db import SessionLocal
 from web_app.app.logger_config import setup_logger
 
 logger = setup_logger()
-ANSIBLE_INVENTORY_FILE_PATH = decouple_config("ANSIBLE_INVENTORY_FILE_PATH", cast=str)
-PLAYBOOK_RUN_INTERVAL_IN_MINUTES = decouple_config("PLAYBOOK_RUN_INTERVAL_IN_MINUTES", cast=int)
+ANSIBLE_INVENTORY_FILE_PATH = decouple_config(
+    "ANSIBLE_INVENTORY_FILE_PATH", default="my_ansible_inventory_file.ini", cast=str
+)
+PLAYBOOK_RUN_INTERVAL_IN_MINUTES = decouple_config(
+    "PLAYBOOK_RUN_INTERVAL_IN_MINUTES", default=360, cast=int
+)
 # The playbook and a relative inventory path are anchored to the repository
 # root so the app behaves identically no matter which directory the server
 # was launched from.
@@ -44,12 +53,18 @@ if not os.path.exists(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH):
     initial_setup = True
 
 
+def _is_valid_number(value: Any) -> bool:
+    """Return True iff ``value`` is a finite real number (excluding bool)."""
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+
+
 def parse_inventory(file_path: str | Path) -> dict[str, str]:
     """Map hostnames to control-node target IPs from inventory lines like
     ``TestnetSupernode01 ansible_host=1.2.3.4``.
 
-    Tolerates any key order, extra inline variables, group headers, blank
-    lines, and comments; skips lines without an ansible_host assignment.
+    Tolerates any key order, whitespace (spaces or tabs), quoted values,
+    extra inline variables, group headers, blank lines, and comments; skips
+    lines without an ansible_host assignment.
     """
     logger.info(f"Parsing inventory file at {file_path}.")
     host_to_ip_dict = {}
@@ -60,7 +75,7 @@ def parse_inventory(file_path: str | Path) -> dict[str, str]:
                 continue
             match = re.search(r'ansible_host=(\S+)', stripped)
             if match:
-                host_to_ip_dict[stripped.split(' ', 1)[0]] = match.group(1)
+                host_to_ip_dict[stripped.split()[0]] = match.group(1).strip('\'"')
     return host_to_ip_dict
 
 
@@ -91,11 +106,12 @@ def ingest_data(db: Session, raw_data: Mapping[str, Any], overall_data: Mapping[
     """Upsert one run's per-host scores in a single transaction.
 
     A malformed host entry must not lose every other host's data for that
-    run, so each host is validated against the model columns before any
-    mutation: a host with unrecognized raw keys is skipped whole, and a
-    non-numeric overall score skips only that host's overall row.
+    run, so each host is validated against the canonical metric columns and
+    finite numeric types before any mutation: a host with unrecognized keys
+    or non-numeric/non-finite metric values is skipped whole, and a
+    non-numeric/non-finite overall score skips only that host's overall row.
     """
-    raw_columns = set(RawBenchmarkSubscores.__table__.columns.keys())
+    raw_columns = set(METRIC_COLUMNS)
     for hostname, scores in raw_data.items():
         if not isinstance(scores, dict):
             logger.error(
@@ -111,6 +127,21 @@ def ingest_data(db: Session, raw_data: Mapping[str, Any], overall_data: Mapping[
                 hostname, sorted(unknown_keys),
             )
             continue
+        sanitized_scores: dict[str, float | None] = {}
+        invalid_keys: list[str] = []
+        for k, v in scores.items():
+            if v is None:
+                sanitized_scores[k] = None
+            elif _is_valid_number(v):
+                sanitized_scores[k] = float(v)
+            else:
+                invalid_keys.append(k)
+        if invalid_keys:
+            logger.error(
+                "Host %r: non-numeric or non-finite raw subscore values for %s; skipping host.",
+                hostname, sorted(invalid_keys),
+            )
+            continue
         # The natural key is (datetime, hostname) -- both tables' unique
         # constraints -- NOT including IP_address: filtering by an IP that
         # changed in the inventory since the first ingest would miss the
@@ -124,26 +155,30 @@ def ingest_data(db: Session, raw_data: Mapping[str, Any], overall_data: Mapping[
         # For raw benchmark subscores
         raw_record = db.query(RawBenchmarkSubscores).filter_by(**conditions).first()
         if raw_record:
-            for k, v in {**scores, "IP_address": ip_address}.items():
-                setattr(raw_record, k, v)
+            raw_record.IP_address = ip_address
+            for col in METRIC_COLUMNS:
+                setattr(raw_record, col, sanitized_scores.get(col))
         else:
-            raw_entry = RawBenchmarkSubscores(**conditions, IP_address=ip_address, **scores)
+            raw_entry = RawBenchmarkSubscores(**conditions, IP_address=ip_address, **sanitized_scores)
             db.add(raw_entry)
         # For overall normalized scores
         if hostname in overall_data:
-            if isinstance(overall_data[hostname], bool) or not isinstance(overall_data[hostname], (int, float)):
+            if not _is_valid_number(overall_data[hostname]):
                 logger.error(
-                    "Host %r: overall score %r is not a number; ingesting raw "
+                    "Host %r: overall score %r is not a finite number; ingesting raw "
                     "subscores without the overall score.",
                     hostname, overall_data[hostname],
                 )
                 continue
+            overall_score_val = float(overall_data[hostname])
             overall_record = db.query(OverallNormalizedScore).filter_by(**conditions).first()
             if overall_record:
-                overall_record.overall_score = overall_data[hostname]
-                setattr(overall_record, "IP_address", ip_address)
+                overall_record.overall_score = overall_score_val
+                overall_record.IP_address = ip_address
             else:
-                overall_entry = OverallNormalizedScore(**conditions, IP_address=ip_address, overall_score=overall_data[hostname])
+                overall_entry = OverallNormalizedScore(
+                    **conditions, IP_address=ip_address, overall_score=overall_score_val
+                )
                 db.add(overall_entry)
     db.commit()
 
@@ -190,7 +225,7 @@ def job() -> None:
     logger.info("Parsing inventory file.")
     host_to_ip = parse_inventory(ANSIBLE_INVENTORY_ABSOLUTE_PATH)
     json_files = glob.glob(f'{NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH}/*.json')
-    overall_data = {}
+    overall_data: dict[str, Any] = {}
     if json_files:
         latest_overall_file = max(json_files, key=os.path.getmtime)
         # The scoring script runs after the combine stage, so a file older
@@ -201,8 +236,23 @@ def job() -> None:
         # file look fresh.
         if os.path.getmtime(latest_overall_file) >= os.path.getmtime(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH):
             logger.info(f"Reading overall data from JSON file at {latest_overall_file}.")
-            with open(latest_overall_file, 'r', encoding='utf-8') as f:
-                overall_data = json.load(f)
+            try:
+                with open(latest_overall_file, 'r', encoding='utf-8') as f:
+                    loaded_overall = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                logger.warning(
+                    "Failed to parse overall scores file %s; ingesting raw subscores without overall scores.",
+                    latest_overall_file,
+                )
+            else:
+                if isinstance(loaded_overall, dict):
+                    overall_data = loaded_overall
+                else:
+                    logger.warning(
+                        "Overall scores file %s does not contain a JSON object; "
+                        "ingesting raw subscores without overall scores.",
+                        latest_overall_file,
+                    )
         else:
             logger.warning("Latest overall scores file predates this run's combined results; "
                            "ingesting raw subscores without overall scores.")
