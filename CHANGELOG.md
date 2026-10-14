@@ -358,6 +358,8 @@ Introduced in the first commit:
 
 | Date | Hash | Summary |
 |------|------|---------|
+| 2026-10-14 | [`8c96957`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/8c96957bd4bd81c2e7328ba92b4bdbe4aa539e6d) | fix(scoring,scheduler): skip empty quoted ansible_host values, validate Mapping custom_weights, and remove runtime assert |
+| 2026-10-14 | [`b0f6e8c`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/b0f6e8c338632089265214d43202d865bf07e73d) | docs(changelog): update Commit Index with recent commits through db36f55 |
 | 2026-10-14 | [`db36f55`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/db36f55c05ce002f459b82081dcb9ec8db292d38) | fix(scheduler,scoring,api,chart,playbook): harden INI comment/boundary parsing, legacy host JSON, overall-only CSV IP, chart limit clamp, and pre-run /tmp cleanup (cloud_benchmarker-z4k) |
 | 2026-10-14 | [`4052e2b`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4052e2b2e4011c617e62d61fbded687514f1ab13) | fix(scoring,scheduler,playbook): normalize custom weights over active metrics, skip zero-metric hosts, and tolerate missing inventory |
 | 2026-10-13 | [`4408bea`](https://github.com/Dicklesworthstone/cloud_benchmarker/commit/4408beafa0e41261b1d5e4fb5f556f743d1c9559) | fix: reality-check hardening across ORM typing, config defaults, scorer, ingest, CSV, charts, and playbook |
