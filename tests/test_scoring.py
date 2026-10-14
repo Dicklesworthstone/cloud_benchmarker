@@ -111,7 +111,42 @@ def test_custom_weights_are_normalized_and_missing_weight_rejected():
         scoring.calculate_overall_performance({"h": HOST_A}, weighting="custom",
                                               custom_weights={m: 0.0 for m in HOST_A})
     with pytest.raises(ValueError):
+        scoring.calculate_overall_performance({"h": HOST_A}, weighting="custom",
+                                              custom_weights={**weights, "mutex_test__avg_latency": -1.0})
+    with pytest.raises(ValueError):
+        scoring.calculate_overall_performance({"h": HOST_A}, weighting="custom",
+                                              custom_weights={**weights, "mutex_test__avg_latency": math.nan})
+    with pytest.raises(ValueError):
         scoring.calculate_overall_performance({"h": HOST_A}, weighting="bogus")
+
+
+def test_custom_weights_normalize_over_active_metrics_when_subset_reported():
+    # Regression: total_weight previously summed over all keys in custom_weights
+    # (e.g. 6.0 across all 5 canonical metrics) even when a test failed across
+    # all hosts so only 4 metrics were reported. The active weights summed to
+    # 5/6 instead of 1.0, making a single host score 41.6666666667 instead of
+    # 50.0 and a strictly superior host score 83.3333333333 instead of 100.0.
+    weights = {
+        "cpu_speed_test__events_per_second": 2.0,
+        "fileio_test__reads_per_second": 1.0,
+        "memory_speed_test__MiB_transferred": 2.0,
+        "mutex_test__avg_latency": 0.5,
+        "threads_test__avg_latency": 0.5,
+    }
+    host_a_no_fileio = {k: v for k, v in HOST_A.items() if k != "fileio_test__reads_per_second"}
+    host_b_no_fileio = {k: v for k, v in HOST_B.items() if k != "fileio_test__reads_per_second"}
+
+    single_scores = scoring.calculate_overall_performance(
+        {"lonely": host_a_no_fileio}, weighting="custom", custom_weights=weights
+    )
+    assert single_scores == {"lonely": 50.0}
+
+    pair_scores = scoring.calculate_overall_performance(
+        {"hostA": host_a_no_fileio, "hostB": host_b_no_fileio},
+        weighting="custom",
+        custom_weights=weights,
+    )
+    assert pair_scores == {"hostA": 100.0, "hostB": 0.0}
 
 
 def test_parse_combined_results_accepts_all_historical_formats():
@@ -142,13 +177,21 @@ def test_hosts_with_missing_metrics_score_neutrally_for_gaps():
     assert scores["partial"] == pytest.approx(25.0)  # worst cpu (0) + neutral fileio (50)
 
 
-def test_hosts_with_empty_metric_dicts_score_neutral_50():
-    # Regression: {"hostA": {}} or {"hostA": {}, "hostB": {}} previously raised
-    # ZeroDivisionError: division by zero because overall_scores remained {}.
-    assert scoring.calculate_overall_performance({"hostA": {}}) == {"hostA": 50.0}
-    assert scoring.calculate_overall_performance({"hostA": {}, "hostB": {}}) == {
-        "hostA": 50.0,
-        "hostB": 50.0,
+def test_hosts_with_zero_valid_metrics_are_excluded_not_ranked_neutral():
+    # Regression: a host with {} (all 5 sysbench tests failed) must not be
+    # scored as 50.0 (which would outrank the slowest working host at 0.0) or
+    # raise ZeroDivisionError when all hosts have {}.
+    assert scoring.calculate_overall_performance({"hostA": {}}) == {}
+    assert scoring.calculate_overall_performance({"hostA": {}, "hostB": {}}) == {}
+
+    fleet = {
+        "hostFast": dict(HOST_A),
+        "hostSlow": dict(HOST_B),
+        "hostDead": {},
+    }
+    assert scoring.calculate_overall_performance(fleet) == {
+        "hostFast": 100.0,
+        "hostSlow": 0.0,
     }
 
 
@@ -179,15 +222,15 @@ def test_scorer_ignores_non_mapping_hosts_and_invalid_metric_values():
     assert scores["hostA"] == 100.0
     assert scores["hostB"] == 0.0
 
-    # If a valid metric is present on hostA (and hostC), while hostB has None for it,
-    # hostB receives the neutral 50.0 on that metric rather than crashing.
+    # If a valid metric is present on hostA (and hostC), while hostB has None for
+    # cpu but reports a valid fileio metric, hostB receives the neutral 50.0 on cpu.
     mixed = {
-        "hostA": {"cpu_speed_test__events_per_second": 200.0},
-        "hostB": {"cpu_speed_test__events_per_second": None},
-        "hostC": {"cpu_speed_test__events_per_second": 100.0},
+        "hostA": {"cpu_speed_test__events_per_second": 200.0, "fileio_test__reads_per_second": 100.0},
+        "hostB": {"cpu_speed_test__events_per_second": None, "fileio_test__reads_per_second": 100.0},
+        "hostC": {"cpu_speed_test__events_per_second": 100.0, "fileio_test__reads_per_second": 100.0},
     }
     mixed_scores = scoring.calculate_overall_performance(mixed)
-    assert mixed_scores == {"hostA": 100.0, "hostB": 50.0, "hostC": 0.0}
+    assert mixed_scores == {"hostA": 75.0, "hostB": 50.0, "hostC": 25.0}
 
 
 def test_parser_fuzz_returns_dicts_or_raises_json_decode_error():

@@ -69,11 +69,21 @@ def calculate_overall_performance(data: Mapping[str, Any], weighting: str = "equ
     """Normalize each metric to 0..100 (100 = best) and combine into scores.
 
     ``weighting`` is either ``"equal_weighting"`` or ``"custom"``. Custom
-    weights are normalized to sum to 1 and must cover every metric present
-    in ``data``.
+    weights are normalized over the active metrics present in ``data`` to sum
+    to 1 and must cover every active metric with a finite non-negative weight.
     """
+    if weighting == "custom":
+        if not custom_weights:
+            raise ValueError("Custom weights must be provided for custom weighting.")
+        if any(not _is_valid_metric_value(w) or w < 0 for w in custom_weights.values()):
+            raise ValueError("Custom weights must be finite non-negative numbers.")
+    elif weighting != "equal_weighting":
+        raise ValueError(f"Unknown weighting mode: {weighting}")
+
     valid_hosts: dict[str, Mapping[str, Any]] = {
-        host: scores for host, scores in data.items() if isinstance(scores, Mapping)
+        host: scores
+        for host, scores in data.items()
+        if isinstance(scores, Mapping) and any(_is_valid_metric_value(v) for v in scores.values())
     }
     if not valid_hosts:
         return {}
@@ -91,21 +101,15 @@ def calculate_overall_performance(data: Mapping[str, Any], weighting: str = "equ
 
     weights: Mapping[str, float] = {}
     if weighting == "custom":
-        if not custom_weights:
-            raise ValueError("Custom weights must be provided for custom weighting.")
+        assert custom_weights is not None
         missing = [m for m in metrics if m not in custom_weights]
         if missing:
             raise ValueError(f"Custom weights missing entries for metrics: {missing}")
-        total_weight = sum(custom_weights.values())
-        if total_weight == 0:
+        total_weight = sum(float(custom_weights[m]) for m in metrics)
+        if total_weight <= 0:
             raise ValueError("Sum of custom weights must not be zero.")
-        # Normalized to sum to 1; consumed only in the custom branch below.
-        weights = {k: v / total_weight for k, v in custom_weights.items()}
-    elif weighting != "equal_weighting":
-        raise ValueError(f"Unknown weighting mode: {weighting}")
-
-    if not metrics:
-        return {host: NEUTRAL_SCORE for host in host_names}
+        # Normalized over active metrics to sum to 1; consumed in the custom branch below.
+        weights = {m: float(custom_weights[m]) / total_weight for m in metrics}
 
     for metric in metrics:
         reported = [

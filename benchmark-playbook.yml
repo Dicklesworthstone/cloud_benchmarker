@@ -110,6 +110,7 @@
         src: "{{ ansible_user_dir }}/cloud_benchmarker_results.json"
         dest: "/tmp/{{ inventory_hostname }}_cloud_benchmarker_results/"
         flat: yes
+      when: benchmark_results | length > 0
 
 - name: Combine benchmark results
   hosts: localhost

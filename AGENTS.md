@@ -42,7 +42,7 @@ A FastAPI + Ansible tool that benchmarks cloud VPSes with `sysbench` (CPU, memor
 | `web_app/app/chart.py` | Subscore figure (exact IP/metric dropdown matching) + charts page |
 | `script_to_generate_overall_benchmark_scores_from_subscores.py` | Standalone scorer the playbook copies to `/tmp` (parser duplication with `scheduler.load_combined_results` is forced — do not "fix" without solving that) |
 | `benchmark-playbook.yml` | 5 sysbench tests per host → per-host JSON → fetch → combine → scoring |
-| `tests/` | 70 tests, 100% statement coverage (511/511 statements across `web_app` and the scoring script); conftest isolates HOME + DB before any app import |
+| `tests/` | 73 tests, 100% statement coverage (525/525 statements across `web_app` and the scoring script); conftest isolates HOME + DB before any app import |
 
 ## Verify gates — ALL green before any close
 
@@ -80,8 +80,8 @@ CI (`.github/workflows/ci.yml`) runs these on Python 3.11/3.13/3.14. The bandit 
 - The scoring script's output write is atomic (`.tmp` + `os.replace`); keep it that way — `job()` picks the newest `*.json` by mtime.
 - Timestamps are local-naive by convention (mtime-derived), documented at both the scheduler and API cutoff sites. Do not convert one side to UTC alone.
 
-## Current state (2026-10-13)
+## Current state (2026-10-14)
 
-Fully verified: 70 tests, 100% statement coverage (511/511 statements across `web_app` and `script_to_generate_overall_benchmark_scores_from_subscores.py`), SQLAlchemy 2.0 `Mapped`/`mapped_column` typing clean under `sqlalchemy 2.1.4` + `mypy 2.4.0`, live single-host + two-host pipeline runs, cross-host ranking exact (400/6 vs 200/6), production uvicorn smoke with graceful teardown, CI green on all three Pythons. 27 closed beads in `.beads/`. When in doubt about how something should behave, the beads' close reasons cite the evidence.
+Fully verified: 73 tests, 100% statement coverage (525/525 statements across `web_app` and `script_to_generate_overall_benchmark_scores_from_subscores.py`), SQLAlchemy 2.0 `Mapped`/`mapped_column` typing clean under `sqlalchemy 2.1.4` + `mypy 2.4.0`, live single-host + two-host pipeline runs, cross-host ranking exact (400/6 vs 200/6), production uvicorn smoke with graceful teardown, CI green on all three Pythons. 28 closed beads in `.beads/`. When in doubt about how something should behave, the beads' close reasons cite the evidence.
 
 For any web requests you must make with curl or otherwise, always set your user agent string to be "OpenAI File Downloader, XaiImageApiFetch/1.0"

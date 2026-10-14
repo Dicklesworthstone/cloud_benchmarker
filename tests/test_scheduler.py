@@ -600,3 +600,58 @@ def test_job_degrades_gracefully_on_corrupt_or_non_dict_overall_file(clean_db, t
 
     assert clean_db.query(RawBenchmarkSubscores).count() == 1
     assert clean_db.query(OverallNormalizedScore).count() == 0
+
+
+def test_ingest_data_skips_hosts_with_zero_valid_metrics(clean_db):
+    # Regression: a host with {} or all-None metrics (all 5 sysbench tests failed)
+    # previously inserted an all-NULL RawBenchmarkSubscores row into SQLite.
+    from web_app.app.database.data_models import OverallNormalizedScore, RawBenchmarkSubscores
+    from web_app.app.utils.scheduler import ingest_data
+
+    now = datetime(2026, 8, 30, 14, 0, 0)
+    raw_data = {
+        "emptyHost": {},
+        "allNoneHost": {"cpu_speed_test__events_per_second": None},
+        "workingHost": dict(RAW_METRICS_HOST_A),
+    }
+    overall_data = {"emptyHost": 50.0, "allNoneHost": 50.0, "workingHost": 90.0}
+    ingest_data(clean_db, raw_data, overall_data, now, {"workingHost": "1.2.3.4"})
+
+    raw_hosts = {r.hostname for r in clean_db.query(RawBenchmarkSubscores).all()}
+    overall_hosts = {r.hostname for r in clean_db.query(OverallNormalizedScore).all()}
+    assert raw_hosts == {"workingHost"}
+    assert overall_hosts == {"workingHost"}
+
+
+def test_job_tolerates_missing_inventory_and_corrupt_or_missing_combined_file(clean_db, tmp_path, monkeypatch):
+    # Regression: a missing inventory file raised FileNotFoundError in parse_inventory
+    # and aborted job() instead of falling back to IP_address='UNKNOWN', and a
+    # missing or corrupt combined results file raised an unhandled exception in job().
+    from web_app.app.database.data_models import RawBenchmarkSubscores
+    from web_app.app.utils import scheduler
+
+    overall_dir = tmp_path / "benchmark_result_output_files"
+    overall_dir.mkdir()
+    combined = tmp_path / "combined_cloud_benchmarker_results.json"
+    missing_inventory = tmp_path / "nonexistent_inventory.ini"
+
+    monkeypatch.setattr(scheduler, "initial_setup", False)
+    monkeypatch.setattr(scheduler, "NORMALIZED_BENCHMARK_OUTPUT_FILES_PATH", str(overall_dir) + "/")
+    monkeypatch.setattr(scheduler, "COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH", str(combined))
+    monkeypatch.setattr(scheduler, "ANSIBLE_INVENTORY_ABSOLUTE_PATH", missing_inventory)
+    monkeypatch.setattr(scheduler, "should_run_job", lambda files: False)
+
+    # 1. Missing combined file -> returns cleanly without crashing
+    scheduler.job()
+    assert clean_db.query(RawBenchmarkSubscores).count() == 0
+
+    # 2. Corrupt combined file -> returns cleanly without crashing
+    combined.write_text("{corrupt json")
+    scheduler.job()
+    assert clean_db.query(RawBenchmarkSubscores).count() == 0
+
+    # 3. Valid combined file with missing inventory -> ingests with IP_address='UNKNOWN'
+    combined.write_text(json.dumps({"hostA": dict(RAW_METRICS_HOST_A)}))
+    scheduler.job()
+    row = clean_db.query(RawBenchmarkSubscores).filter_by(hostname="hostA").one()
+    assert row.IP_address == "UNKNOWN"

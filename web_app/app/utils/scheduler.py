@@ -67,15 +67,19 @@ def parse_inventory(file_path: str | Path) -> dict[str, str]:
     lines without an ansible_host assignment.
     """
     logger.info(f"Parsing inventory file at {file_path}.")
-    host_to_ip_dict = {}
-    with open(file_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped or stripped.startswith(('[', '#', ';')):
-                continue
-            match = re.search(r'ansible_host=(\S+)', stripped)
-            if match:
-                host_to_ip_dict[stripped.split()[0]] = match.group(1).strip('\'"')
+    host_to_ip_dict: dict[str, str] = {}
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith(('[', '#', ';')):
+                    continue
+                match = re.search(r'ansible_host=(\S+)', stripped)
+                if match:
+                    host_to_ip_dict[stripped.split()[0]] = match.group(1).strip('\'"')
+    except OSError:
+        logger.warning(f"Inventory file at {file_path} could not be read; defaulting host IPs to UNKNOWN.")
+        return {}
     return host_to_ip_dict
 
 
@@ -107,9 +111,10 @@ def ingest_data(db: Session, raw_data: Mapping[str, Any], overall_data: Mapping[
 
     A malformed host entry must not lose every other host's data for that
     run, so each host is validated against the canonical metric columns and
-    finite numeric types before any mutation: a host with unrecognized keys
-    or non-numeric/non-finite metric values is skipped whole, and a
-    non-numeric/non-finite overall score skips only that host's overall row.
+    finite numeric types before any mutation: a host with unrecognized keys,
+    non-numeric/non-finite metric values, or zero valid metric observations
+    is skipped whole, and a non-numeric/non-finite overall score skips only
+    that host's overall row.
     """
     raw_columns = set(METRIC_COLUMNS)
     for hostname, scores in raw_data.items():
@@ -140,6 +145,12 @@ def ingest_data(db: Session, raw_data: Mapping[str, Any], overall_data: Mapping[
             logger.error(
                 "Host %r: non-numeric or non-finite raw subscore values for %s; skipping host.",
                 hostname, sorted(invalid_keys),
+            )
+            continue
+        if not any(v is not None for v in sanitized_scores.values()):
+            logger.error(
+                "Host %r: no valid metric values reported; skipping host.",
+                hostname,
             )
             continue
         # The natural key is (datetime, hostname) -- both tables' unique
@@ -217,8 +228,16 @@ def job() -> None:
     # cutoffs, CSV export) share this convention, so converting to UTC here
     # would require a coordinated migration of existing DB rows for no
     # practical benefit in a single-host operator tool.
-    datetime_from_file = datetime.fromtimestamp(os.path.getmtime(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH))
-    raw_data = load_combined_results(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH)
+    try:
+        combined_mtime = os.path.getmtime(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH)
+        datetime_from_file = datetime.fromtimestamp(combined_mtime)
+        raw_data = load_combined_results(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH)
+    except (OSError, json.JSONDecodeError):
+        logger.warning(
+            "Combined results file at %s is missing or unreadable; skipping ingestion this tick.",
+            COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH,
+        )
+        return
     if not raw_data:
         logger.warning("Combined results file contains no host data; skipping ingestion this tick.")
         return
@@ -234,7 +253,7 @@ def job() -> None:
         # Both sides use mtime: Linux ctime is inode-change time, so any
         # metadata touch (chmod, chown, backup tool) would make a stale
         # file look fresh.
-        if os.path.getmtime(latest_overall_file) >= os.path.getmtime(COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH):
+        if os.path.getmtime(latest_overall_file) >= combined_mtime:
             logger.info(f"Reading overall data from JSON file at {latest_overall_file}.")
             try:
                 with open(latest_overall_file, 'r', encoding='utf-8') as f:

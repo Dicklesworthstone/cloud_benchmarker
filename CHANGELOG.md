@@ -18,23 +18,24 @@ Repository: <https://github.com/Dicklesworthstone/cloud_benchmarker>
 
 ### Scoring Engine Hardening & Coverage Registration (`script_to_generate_overall_benchmark_scores_from_subscores.py`, `tests/test_scoring.py`)
 
-- **Hardened `calculate_overall_performance` against malformed host entries, `None`/boolean/non-finite metric values, and empty host metric dicts** (`cloud_benchmarker-b0m`): non-mapping host values are ignored, metric values are validated via `_is_valid_metric_value` (finite `int`/`float` excluding `bool`), unreported/invalid metrics contribute the documented `NEUTRAL_SCORE` (`50.0`), and hosts whose metric dicts are empty (`{}`) receive `50.0` instead of raising `ZeroDivisionError`.
-- Extracted `main()` in the scoring script and registered `sys.modules["script_to_generate_overall_benchmark_scores_from_subscores"] = scoring` in `tests/test_scoring.py`, achieving 100% statement coverage (93/93 statements) with zero `CoverageWarning`.
+- **Hardened `calculate_overall_performance` against malformed host entries, `None`/boolean/non-finite metric values, and zero-metric host dicts** (`cloud_benchmarker-b0m`, `cloud_benchmarker-ffi`): non-mapping host values and hosts with zero valid metrics (`{}`) are ignored (preventing a 100%-failed host from receiving a neutral `50.0` that outranks a working host at `0.0`), metric values are validated via `_is_valid_metric_value` (finite `int`/`float` excluding `bool`), and unreported/invalid metrics on a partially-reporting host contribute the documented `NEUTRAL_SCORE` (`50.0`).
+- **Normalized custom weights over active reported metrics** (`cloud_benchmarker-ffi`): previously `total_weight = sum(custom_weights.values())` summed over all 5 canonical metrics (`6.0`) even when a test failed across all hosts so only 4 metrics were present in `metrics`, causing active weights to sum to `5/6` (`0.8333...`), a single host to score `41.6666666667` instead of `50.0`, and a strictly superior host to score `83.3333333333` instead of `100.0`. Custom weights are now validated as finite non-negative numbers and normalized over the active `metrics` present in `data`.
+- Extracted `main()` in the scoring script and registered `sys.modules["script_to_generate_overall_benchmark_scores_from_subscores"] = scoring` in `tests/test_scoring.py`, achieving 100% statement coverage (95/95 statements) with zero `CoverageWarning`.
 
 ### Scheduler Ingest Isolation & Inventory Parsing (`web_app/app/utils/scheduler.py`)
 
-- **Closed ingest isolation bypasses** (`cloud_benchmarker-kgv`):
+- **Closed ingest isolation bypasses** (`cloud_benchmarker-kgv`, `cloud_benchmarker-ffi`):
   - Validated raw subscore keys against `set(METRIC_COLUMNS)` instead of `RawBenchmarkSubscores.__table__.columns.keys()`, preventing a malformed host dict containing metadata column names (`"hostname"`, `"id"`, `"datetime"`, `"IP_address"`) from raising `TypeError` and aborting the batch.
-  - Validated raw and overall score values with `_is_valid_number` (rejecting non-numeric strings, booleans, `NaN`, and `±Inf` while preserving `None` for omitted raw metrics) so corrupt values cannot abort `db.commit()` with `StatementError` or poison SQLite rows with `NaN` (which permanently 500s `/data/raw/` and `/data/overall/`).
+  - Validated raw and overall score values with `_is_valid_number` (rejecting non-numeric strings, booleans, `NaN`, and `±Inf` while preserving `None` for omitted raw metrics) and skipped hosts with zero non-`None` metrics so corrupt or all-empty host dicts cannot abort `db.commit()`, poison SQLite rows with `NaN`, or insert all-NULL rows.
   - Re-ingesting an existing `(datetime, hostname)` row now resets omitted `METRIC_COLUMNS` to `None` instead of retaining stale values from an earlier write.
-  - Guarded `latest_overall_file` loading in `job()` against `(OSError, json.JSONDecodeError)` and non-dict JSON so a corrupt overall file degrades to raw-only ingestion instead of aborting the tick.
+  - Guarded `latest_overall_file` and `COMBINED_BENCHMARK_SUBSCORE_RESULTS_FILE_PATH` loading in `job()` against `(OSError, json.JSONDecodeError)` and non-dict JSON, and guarded `parse_inventory` against `OSError` (defaulting host IPs to `'UNKNOWN'` when the inventory file is unreadable).
   - Hardened `parse_inventory` to split hostnames on arbitrary whitespace (including tabs) and strip surrounding quotes from `ansible_host` values.
 
 ### Historical CSV Merge Tolerance, Chronological Chart Traces & Playbook Hardening (`api_routes.py`, `chart.py`, `benchmark-playbook.yml`)
 
 - **Bounded `pd.merge_asof` with `tolerance=pd.Timedelta(seconds=30)`** (`cloud_benchmarker-ybs`): prevents a run whose overall scoring step failed from inheriting a stale `overall_score` from a previous run days or hours earlier in `/benchmark_historical_csv/`.
 - **Sorted chart DataFrames chronologically ascending by `datetime`**: `generate_benchmark_charts` queries `ORDER BY datetime DESC LIMIT MAX_DATA_POINTS_FOR_CHART` to select the newest points, then sorts `raw_df` and `overall_df` ascending by `datetime` before building Plotly line/spline traces.
-- **Hardened `benchmark-playbook.yml`**: added `[ -n "$..." ]` non-empty metric guards to all 5 sysbench shell tasks, added `trap 'sysbench fileio cleanup >/dev/null 2>&1 || true' EXIT` to the FileIO task so temporary files are always cleaned up on failure, and removed `/tmp/{{ item }}_cloud_benchmarker_results` after combining results.
+- **Hardened `benchmark-playbook.yml`**: added `[ -n "$..." ]` non-empty metric guards to all 5 sysbench shell tasks, added `trap 'sysbench fileio cleanup >/dev/null 2>&1 || true' EXIT` to the FileIO task so temporary files are always cleaned up on failure, gated `fetch` on `benchmark_results | length > 0`, and removed `/tmp/{{ item }}_cloud_benchmarker_results` after combining results.
 
 ---
 
