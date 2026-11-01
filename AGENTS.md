@@ -1,5 +1,17 @@
 # AGENTS.md — Cloud Benchmarker
 
+## Permanent CI Policy — DSR Only
+
+**Never use GitHub Actions for ANY purpose in this project.** This includes GitHub-hosted
+runners and self-hosted runners registered with GitHub Actions, CI, tests, builds, releases,
+deployments, scheduled jobs, and maintenance. Do not enable, dispatch, rerun, or rely on
+Actions, and do not treat billing or runner availability as a reason to restore it.
+
+Use **dsr ([Dicklesworthstone/doodlestein_self_releaser](https://github.com/Dicklesworthstone/doodlestein_self_releaser))**
+directly for these workloads instead, not merely as an Actions fallback. Existing workflow
+YAML may be retained as input for local dsr/act execution; that does not authorize execution
+by GitHub Actions. Preserve the workload definitions and their required checks.
+
 ## RULE 0.5 - SUITE-WIDE RULES LIVE IN /data/projects/AGENTS.md
 
 The suite-wide rules in **`/data/projects/AGENTS.md`** bind you here too. Read it. Two sections
@@ -55,7 +67,7 @@ bandit -r web_app -q --skip B404,B603,B607
 ansible-playbook --syntax-check -i my_ansible_inventory_file.ini benchmark-playbook.yml
 ```
 
-CI (`.github/workflows/ci.yml`) runs these on Python 3.11/3.13/3.14. The bandit skips are deliberate: the scheduler launches `ansible-playbook` from PATH with list argv, no shell.
+Run these through DSR on Python 3.11/3.13/3.14; `.github/workflows/ci.yml` is retained only as a local workload definition, not an executing GitHub Actions gate. The bandit skips are deliberate: the scheduler launches `ansible-playbook` from PATH with list argv, no shell.
 
 ## Coordination law (three double-execution collisions occurred 2026-08-28)
 
